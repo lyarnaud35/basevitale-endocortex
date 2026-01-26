@@ -32,6 +32,10 @@ const mockValidatedDraft = { ...mockDraft, status: 'VALIDATED' as const };
 const mockScribeService = {
   analyze: jest.fn().mockResolvedValue(mockConsultation),
   analyzeConsultation: jest.fn().mockResolvedValue(mockConsultation),
+  updateDraft: jest.fn().mockResolvedValue({
+    draft: { id: 'draft-1', patientId: 'patient-123', status: 'DRAFT', updatedAt: new Date() },
+    consultation: mockConsultation,
+  }),
 };
 
 const mockPrisma = {
@@ -176,20 +180,16 @@ describe('ScribeController', () => {
 
   describe('PUT /scribe/draft/:id', () => {
     it('should update draft with validated structuredData', async () => {
-      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(mockDraft);
-      mockPrisma.consultationDraft.update.mockResolvedValueOnce({
-        ...mockDraft,
-        structuredData: mockConsultation,
-        updatedAt: new Date(),
-      });
       const body = { structuredData: mockConsultation };
       const res = await controller.updateDraft('draft-1', body);
+      expect(mockScribeService.updateDraft).toHaveBeenCalledWith('draft-1', mockConsultation);
       expect(res.consultation).toEqual(mockConsultation);
-      expect(mockPrisma.consultationDraft.update).toHaveBeenCalled();
+      expect(res.draft).toBeDefined();
+      expect(res.draft.id).toBe('draft-1');
     });
 
     it('should throw NotFoundException when draft missing', async () => {
-      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(null);
+      mockScribeService.updateDraft.mockRejectedValueOnce(new NotFoundException('Consultation draft missing not found'));
       await expect(
         controller.updateDraft('missing', { structuredData: mockConsultation }),
       ).rejects.toThrow(NotFoundException);

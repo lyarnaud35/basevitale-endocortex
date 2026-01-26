@@ -53,7 +53,13 @@ describe('ScribeService', () => {
   };
 
   const mockPrisma = {
-    consultationDraft: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+    consultationDraft: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      update: jest.fn(),
+    },
   };
 
   beforeEach(async () => {
@@ -251,6 +257,47 @@ describe('ScribeService', () => {
 
       expect(result).toBeDefined();
       expect(ConsultationSchema.parse(result)).toBeDefined();
+    });
+  });
+
+  describe('updateDraft', () => {
+    const existingDraft = {
+      id: 'draft-1',
+      patientId: 'patient-123',
+      status: 'DRAFT',
+      structuredData: {
+        patientId: 'patient-123',
+        transcript: 'Texte initial',
+        symptoms: ['Fièvre'],
+        diagnosis: [{ code: 'J11.1', label: 'Grippe', confidence: 0.9 }],
+        medications: [{ name: 'Doliprane', dosage: '1g', duration: '7j' }],
+      },
+    };
+    it('should merge partial, validate, update and return { draft, consultation }', async () => {
+      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(existingDraft);
+      mockPrisma.consultationDraft.update.mockImplementation(async ({ data }: any) => ({
+        id: 'draft-1',
+        patientId: 'patient-123',
+        status: 'DRAFT',
+        updatedAt: new Date(),
+        structuredData: data.structuredData,
+      }));
+
+      const partial = { symptoms: ['Fièvre', 'Toux'] };
+      const res = await service.updateDraft('draft-1', partial);
+
+      expect(mockPrisma.consultationDraft.findUnique).toHaveBeenCalledWith({ where: { id: 'draft-1' } });
+      expect(mockPrisma.consultationDraft.update).toHaveBeenCalled();
+      expect(res.draft).toBeDefined();
+      expect(res.draft.id).toBe('draft-1');
+      expect(res.consultation).toBeDefined();
+      expect(Array.isArray(res.consultation.symptoms)).toBe(true);
+      expect(res.consultation.symptoms).toContain('Toux');
+    });
+
+    it('should throw NotFoundException when draft missing', async () => {
+      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(null);
+      await expect(service.updateDraft('missing', {})).rejects.toThrow('Consultation draft missing not found');
     });
   });
 });

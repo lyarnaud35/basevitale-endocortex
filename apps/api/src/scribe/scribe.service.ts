@@ -1,4 +1,12 @@
-import { Injectable, Logger, Inject, Optional, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Inject,
+  Optional,
+  ServiceUnavailableException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { MetricsService } from '../common/services/metrics.service';
 import { CacheService } from '../common/services/cache.service';
 import { ConfigService } from '../common/services/config.service';
@@ -72,13 +80,20 @@ export class ScribeService {
       this.logger.log(`AI Cache enabled (TTL: ${this.cacheTTL}ms)`);
     }
 
-    // Initialiser OpenAI client si mode CLOUD
+    // Initialiser client cloud (OpenAI-compatible) si mode CLOUD — Groq ou OpenAI
     if (this.aiMode === 'CLOUD') {
-      const apiKey = process.env.OPENAI_API_KEY;
+      const provider = this.configService.cloudProvider;
+      const apiKey = this.configService.cloudApiKey;
       if (!apiKey) {
-        this.logger.warn('OPENAI_API_KEY not found, CLOUD mode may fail');
+        this.logger.warn(
+          `${provider === 'groq' ? 'GROQ_API_KEY' : 'OPENAI_API_KEY'} not found, CLOUD mode may fail`,
+        );
       }
-      this.openaiClient = new OpenAI({ apiKey });
+      this.openaiClient = new OpenAI({
+        apiKey: apiKey || 'dummy',
+        baseURL: this.configService.cloudBaseUrl,
+      });
+      this.logger.log(`CLOUD provider: ${provider}, model: ${this.configService.cloudModel}`);
     } else {
       this.openaiClient = null;
     }
@@ -90,7 +105,7 @@ export class ScribeService {
    * - MOCK : données factices → ConsultationDraft + projection Neo4j
    * - LOCAL : POST Python /process-generic { text, schema } → {"data": ...} → parser → DB + Neo4j.
    *   Si Python injoignable : fallback Mock (⚠️ Neuro-Cortex Unreachable).
-   * - CLOUD / autre : fallback Mock (utiliser /analyze-consultation pour OpenAI).
+   * - CLOUD : Groq ou OpenAI (JSON mode) → même flux DB + Neo4j. Réponse typiquement < 2s.
    */
   async analyze(text: string): Promise<Consultation> {
     const startTime = Date.now();
@@ -104,8 +119,12 @@ export class ScribeService {
       return this.runMockFallback(text, startTime);
     }
 
+    if (aiMode === 'CLOUD') {
+      return this.runCloudAnalyze(text, startTime);
+    }
+
     if (aiMode !== 'LOCAL') {
-      this.logger.debug(`[analyze] AI_MODE=${aiMode} → fallback MOCK (flux Python réservé à LOCAL)`);
+      this.logger.debug(`[analyze] AI_MODE=${aiMode} → fallback MOCK`);
       return this.runMockFallback(text, startTime);
     }
 
@@ -168,6 +187,42 @@ export class ScribeService {
     }
   }
 
+  /**
+   * CLOUD: Groq ou OpenAI (JSON mode) → draft + Neo4j. Même flux que LOCAL, typiquement < 2s.
+   */
+  private async runCloudAnalyze(
+    text: string,
+    startTime: number,
+  ): Promise<Consultation & { draftId?: string }> {
+    const validatedConsultation = await this.analyzeConsultationCloud(text);
+    let draftId: string | null = null;
+
+    try {
+      const draft = await this.prisma.consultationDraft.create({
+        data: {
+          patientId: validatedConsultation.patientId,
+          status: 'DRAFT',
+          structuredData: validatedConsultation as object,
+        },
+      });
+      draftId = draft.id;
+      this.logger.log(`[CLOUD] ConsultationDraft sauvegardé: ${draft.id}`);
+      this.metricsService.incrementCounter('scribe.analyze.cloud.saved');
+      this.metricsService.recordTiming('scribe.analyze.cloud.duration', Date.now() - startTime);
+      await this.graphProjector.projectConsultation(
+        validatedConsultation.patientId,
+        validatedConsultation,
+      );
+      this.logger.log(`✅ Graph Projection Complete for patient ${validatedConsultation.patientId}`);
+    } catch (e) {
+      this.logger.error('[CLOUD] Erreur sauvegarde ConsultationDraft', e);
+      this.metricsService.incrementCounter('scribe.analyze.cloud.save_error');
+    }
+
+    this.metricsService.incrementCounter('scribe.analyze.cloud.success');
+    return { ...validatedConsultation, draftId } as Consultation & { draftId?: string };
+  }
+
   private async runMockFallback(
     text: string,
     startTime: number,
@@ -214,49 +269,97 @@ export class ScribeService {
   }
 
   /**
-   * Update a consultation draft with manual corrections
-   * 
+   * Update a consultation draft with manual corrections (PATCH /scribe/draft/:id).
+   * Accepte un Partial<Consultation>, merge avec l'existant, valide, persiste.
+   *
    * @param id - Draft ID
    * @param partialData - Partial consultation data to merge with existing data
-   * @returns Updated consultation data
+   * @returns { draft, consultation } — draft mis à jour et consultation validée
    */
-  async updateDraft(id: string, partialData: Partial<Consultation>): Promise<Consultation> {
+  async updateDraft(
+    id: string,
+    partialData: Partial<Consultation>,
+  ): Promise<{ draft: { id: string; patientId: string; status: string; updatedAt: Date }; consultation: Consultation }> {
     this.logger.log(`Updating draft ${id} with partial data`);
 
-    // 1. Récupérer le draft existant
-    const draft = await this.prisma.consultationDraft.findUnique({
-      where: { id },
-    });
-
+    const draft = await this.prisma.consultationDraft.findUnique({ where: { id } });
     if (!draft) {
-      throw new Error(`Draft ${id} not found`);
+      throw new NotFoundException(`Consultation draft ${id} not found`);
+    }
+    if (draft.status === 'VALIDATED') {
+      throw new BadRequestException('Cannot update a validated draft');
     }
 
-    // 2. Fusionner les données existantes avec les nouvelles
-    const existingData = draft.structuredData as Consultation;
-    const mergedData: Consultation = {
+    const existingData = draft.structuredData as Record<string, unknown>;
+    const incoming = partialData as Record<string, unknown>;
+
+    const incomingSymptoms =
+      incoming.symptoms !== undefined
+        ? (incoming.symptoms as string[]).filter((s: string) => s && String(s).trim().length > 0)
+        : undefined;
+    const incomingDiagnosis =
+      incoming.diagnosis !== undefined
+        ? (incoming.diagnosis as Array<{ code?: string; label?: string; confidence?: number }>).filter(
+            (d) => d && (String(d.code || '').trim() || String(d.label || '').trim()),
+          )
+        : undefined;
+    const incomingMedications =
+      incoming.medications !== undefined
+        ? (incoming.medications as Array<{ name?: string; dosage?: string; duration?: string }>).filter(
+            (m) => m && String(m.name || '').trim(),
+          )
+        : undefined;
+
+    const merged = {
       ...existingData,
-      ...partialData,
-      // Fusionner les tableaux de manière intelligente
-      symptoms: partialData.symptoms !== undefined ? partialData.symptoms : existingData.symptoms,
-      diagnosis: partialData.diagnosis !== undefined ? partialData.diagnosis : existingData.diagnosis,
-      medications: partialData.medications !== undefined ? partialData.medications : existingData.medications,
+      ...incoming,
+      symptoms:
+        incomingSymptoms !== undefined
+          ? incomingSymptoms
+          : (existingData.symptoms as string[] || []).filter((s: string) => s && String(s).trim().length > 0),
+      diagnosis:
+        incomingDiagnosis !== undefined
+          ? incomingDiagnosis
+          : (existingData.diagnosis as unknown[] || []).filter(
+              (d: { code?: string; label?: string }) =>
+                d && (String((d as any).code || '').trim() || String((d as any).label || '').trim()),
+            ),
+      medications:
+        incomingMedications !== undefined
+          ? incomingMedications
+          : (existingData.medications as unknown[] || []).filter(
+              (m: { name?: string }) => m && String((m as any).name || '').trim(),
+            ),
     };
 
-    // 3. Valider les données fusionnées
-    const validatedData = ConsultationSchema.parse(mergedData);
+    let validated: Consultation;
+    try {
+      validated = ConsultationSchema.parse(merged) as Consultation;
+    } catch (e) {
+      const err = e as { errors?: unknown[] };
+      this.logger.warn(`[updateDraft] Validation failed for ${id}`, err?.errors);
+      throw new BadRequestException({
+        message: 'Données structurées invalides',
+        errors: err?.errors ?? [],
+        details: { draftId: id },
+      });
+    }
 
-    // 4. Mettre à jour le draft
-    await this.prisma.consultationDraft.update({
+    const updated = await this.prisma.consultationDraft.update({
       where: { id },
-      data: {
-        structuredData: validatedData as any,
-        updatedAt: new Date(),
-      },
+      data: { structuredData: validated as object, updatedAt: new Date() },
     });
 
     this.logger.log(`Draft ${id} updated successfully`);
-    return validatedData;
+    return {
+      draft: {
+        id: updated.id,
+        patientId: updated.patientId,
+        status: updated.status,
+        updatedAt: updated.updatedAt,
+      },
+      consultation: validated,
+    };
   }
 
   /**
@@ -425,10 +528,12 @@ export class ScribeService {
    * Bypasses Python to save resources and reduce latency
    */
   private async analyzeConsultationCloud(text: string): Promise<Consultation> {
-    this.logger.debug('Using CLOUD mode with OpenAI');
+    const provider = this.configService.cloudProvider;
+    const model = this.configService.cloudModel;
+    this.logger.debug(`Using CLOUD mode with ${provider} (${model})`);
 
     if (!this.openaiClient) {
-      throw new Error('OpenAI client not initialized');
+      throw new Error('Cloud LLM client not initialized');
     }
 
     // Convertir le schéma Zod en JSON Schema pour référence
@@ -463,7 +568,7 @@ Réponds UNIQUEMENT avec un JSON valide.`;
 
     try {
       const completion = await this.openaiClient.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -474,7 +579,7 @@ Réponds UNIQUEMENT avec un JSON valide.`;
 
       const responseText = completion.choices[0]?.message?.content;
       if (!responseText) {
-        throw new Error('No response from OpenAI');
+        throw new Error(`No response from ${provider}`);
       }
 
       // Parser la réponse JSON
@@ -483,10 +588,11 @@ Réponds UNIQUEMENT avec un JSON valide.`;
       // Valider avec le schéma Zod avant de retourner
       this.metricsService.incrementCounter('scribe.extractions.cloud');
       return ConsultationSchema.parse(parsedResponse);
-    } catch (error) {
-      this.logger.error('Error calling OpenAI', error);
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Error calling ${provider}`, err);
       this.metricsService.incrementCounter('scribe.extractions.cloud.error');
-      throw new Error(`OpenAI API error: ${error.message}`);
+      throw new Error(`${provider} API error: ${err.message}`);
     }
   }
 

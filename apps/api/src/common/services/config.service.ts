@@ -38,6 +38,37 @@ export class ConfigService {
     return process.env.OPENAI_API_KEY;
   }
 
+  /** CLOUD: 'groq' | 'openai'. Défaut: groq si GROQ_API_KEY, sinon openai. */
+  get cloudProvider(): 'groq' | 'openai' {
+    const p = (process.env.CLOUD_LLM_PROVIDER || '').toLowerCase();
+    if (p === 'groq' || p === 'openai') return p;
+    return process.env.GROQ_API_KEY ? 'groq' : 'openai';
+  }
+
+  get groqApiKey(): string | undefined {
+    return process.env.GROQ_API_KEY;
+  }
+
+  /** Base URL pour le provider cloud. Groq = API OpenAI-compatible. */
+  get cloudBaseUrl(): string {
+    return this.cloudProvider === 'groq'
+      ? 'https://api.groq.com/openai/v1'
+      : 'https://api.openai.com/v1';
+  }
+
+  /** Modèle à utiliser en CLOUD (Groq ou OpenAI). Rapides pour dev UI (< 2s). */
+  get cloudModel(): string {
+    if (this.cloudProvider === 'groq') {
+      return process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+    }
+    return process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+  }
+
+  /** Clé API pour le provider cloud actif. */
+  get cloudApiKey(): string | undefined {
+    return this.cloudProvider === 'groq' ? this.groqApiKey : this.openaiApiKey;
+  }
+
   get pythonSidecarUrl(): string {
     return process.env.AI_CORTEX_URL || 'http://localhost:8000';
   }

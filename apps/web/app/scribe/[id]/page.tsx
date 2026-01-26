@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { formatApiError, API_BASE } from '../../../lib/api/client';
 import { ConsultationSchema, Consultation } from '@basevitale/shared';
+import { useDebouncedCallback } from '../../../lib/hooks/useDebounce';
 
 /**
  * Page Scribe [id] - Édition d'un Draft
@@ -28,6 +29,9 @@ export default function ScribeEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<string>('DRAFT');
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Formulaire avec react-hook-form
   const {
@@ -86,6 +90,7 @@ export default function ScribeEditPage() {
         reset(consultation);
         setDraftStatus(draft?.status || 'DRAFT');
         setSuccessMessage('✅ Draft chargé avec succès');
+        setHasLoaded(true);
       } catch (err: unknown) {
         setError(formatApiError(err));
       } finally {
@@ -193,11 +198,22 @@ export default function ScribeEditPage() {
     [formData.medications, setValue],
   );
 
+  const validationErrors = useMemo(() => {
+    if (Object.keys(errors).length === 0) return null;
+    const errorMessages: string[] = [];
+    if (errors.symptoms) errorMessages.push('Au moins un symptôme est requis');
+    if (errors.diagnosis) errorMessages.push('Au moins un diagnostic est requis');
+    if (errors.patientId) errorMessages.push("L'identifiant du patient est requis");
+    if (errors.transcript) errorMessages.push('Le transcript est requis');
+    return errorMessages.length > 0 ? errorMessages : null;
+  }, [errors]);
+
   // Sauvegarder les modifications
   const handleSave = useCallback(async () => {
     if (!draftId || !isDirty) return;
 
     setSaving(true);
+    setSaveStatus('saving');
     setError(null);
 
     try {
@@ -272,17 +288,55 @@ export default function ScribeEditPage() {
       const savedConsultation = result.consultation || result.data?.consultation || currentValues;
       reset(savedConsultation, { keepDirty: false });
       setSuccessMessage('✅ Modifications sauvegardées avec succès');
+      setSaveStatus('saved');
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+      savedTimeoutRef.current = setTimeout(() => {
+        savedTimeoutRef.current = null;
+        setSaveStatus('idle');
+      }, 2500);
       console.log('✅ [handleSave] Sauvegarde réussie:', savedConsultation);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : formatApiError(err);
       setError(errorMessage);
+      setSaveStatus('idle');
       console.error('❌ [handleSave] Erreur lors de la sauvegarde:', errorMessage);
       setSaving(false);
-      return; // Ne pas continuer si la sauvegarde échoue
+      return;
     } finally {
       setSaving(false);
     }
   }, [draftId, getValues, isDirty, reset]);
+
+  const debouncedSave = useDebouncedCallback(handleSave, 1000);
+
+  useEffect(() => {
+    if (
+      !hasLoaded ||
+      !isDirty ||
+      !draftId ||
+      draftStatus === 'VALIDATED' ||
+      saving ||
+      !!validationErrors
+    )
+      return;
+    debouncedSave();
+  }, [
+    formData,
+    isDirty,
+    draftId,
+    hasLoaded,
+    draftStatus,
+    saving,
+    !!validationErrors,
+    debouncedSave,
+  ]);
+
+  useEffect(
+    () => () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    },
+    [],
+  );
 
   // Valider le draft
   const handleValidate = useCallback(async (data: Consultation) => {
@@ -340,31 +394,6 @@ export default function ScribeEditPage() {
       setValidating(false);
     }
   }, [draftId, isDirty, handleSave, router]);
-
-  // Validation errors
-  const validationErrors = useMemo(() => {
-    if (Object.keys(errors).length === 0) return null;
-
-    const errorMessages: string[] = [];
-
-    if (errors.symptoms) {
-      errorMessages.push('Au moins un symptôme est requis');
-    }
-
-    if (errors.diagnosis) {
-      errorMessages.push('Au moins un diagnostic est requis');
-    }
-
-    if (errors.patientId) {
-      errorMessages.push("L'identifiant du patient est requis");
-    }
-
-    if (errors.transcript) {
-      errorMessages.push('Le transcript est requis');
-    }
-
-    return errorMessages.length > 0 ? errorMessages : null;
-  }, [errors]);
 
   if (loading) {
     return (
@@ -735,52 +764,60 @@ export default function ScribeEditPage() {
             </div>
 
             {/* Footer avec boutons d'action */}
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving || !isDirty || draftStatus === 'VALIDATED'}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-2"
-                title={!isDirty ? 'Aucune modification' : 'Sauvegarder les modifications'}
-              >
-                {saving ? (
-                  <>
-                    <svg
-                      className="animate-spin h-4 w-4"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    Sauvegarde…
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    Sauvegarder
-                  </>
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || !isDirty || draftStatus === 'VALIDATED'}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-2"
+                  title={!isDirty ? 'Aucune modification' : 'Sauvegarder les modifications'}
+                >
+                  {saving ? (
+                    <>
+                      <svg
+                        className="animate-spin h-4 w-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Sauvegarde…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                      Sauvegarder
+                    </>
+                  )}
+                </button>
+                {saveStatus === 'saving' && (
+                  <span className="text-sm text-gray-500">Enregistrement…</span>
                 )}
-              </button>
+                {saveStatus === 'saved' && (
+                  <span className="text-sm font-medium text-green-700">Modifications enregistrées</span>
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={validating || !draftId || !!validationErrors || draftStatus === 'VALIDATED'}

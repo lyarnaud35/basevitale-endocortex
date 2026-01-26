@@ -21,7 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Neo4jService } from '../neo4j/neo4j.service';
 import { ZodValidationPipe } from '../common';
 import { AuthGuard } from '../common/guards/auth.guard';
-import { ConsultationSchema } from '@basevitale/shared';
+import { ConsultationSchema, type Consultation } from '@basevitale/shared';
 import { z, ZodError } from 'zod';
 import { sanitizeString } from '../common/utils/sanitize.util';
 import { ScribeHealthService } from './scribe.health.service';
@@ -310,132 +310,23 @@ export class ScribeController {
    * PHASE D : Mettre à jour un draft avec corrections manuelles
    * PATCH /scribe/draft/:id
    * PUT /scribe/draft/:id
-   * 
-   * Permet au médecin de corriger/modifier les données structurées
-   * Supporte les mises à jour partielles (merge avec les données existantes)
+   *
+   * Body : { structuredData: Partial<Consultation> }. Merge avec l'existant, validation Zod, persistence.
    */
   @Patch('draft/:id')
   @Put('draft/:id')
   @HttpCode(HttpStatus.OK)
   async updateDraft(
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(z.object({
-      structuredData: z.any(), // ConsultationSchema sera validé côté service
-    })))
-    body: { structuredData: any },
+    @Body(
+      new ZodValidationPipe(
+        z.object({ structuredData: z.record(z.unknown()).optional().default({}) }),
+      ),
+    )
+    body: { structuredData?: Partial<Consultation> },
   ) {
     this.logger.log(`Updating consultation draft ${id} with manual corrections`);
-
-    let mergedData: any = null;
-
-    try {
-      // 1. Vérifier que le draft existe et récupérer les données existantes
-      const draft = await this.prisma.consultationDraft.findUnique({
-        where: { id },
-      });
-
-      if (!draft) {
-        throw new NotFoundException(`Consultation draft ${id} not found`);
-      }
-
-      // 2. Vérifier que le draft n'est pas déjà validé
-      if (draft.status === 'VALIDATED') {
-        throw new BadRequestException('Cannot update a validated draft');
-      }
-
-      // 3. Fusionner les données existantes avec les nouvelles (mise à jour partielle)
-      const existingData = draft.structuredData as any;
-      
-      // Filtrer les symptômes vides avant le merge
-      const incomingSymptoms = body.structuredData.symptoms !== undefined 
-        ? (body.structuredData.symptoms as string[]).filter((s: string) => s && s.trim().length > 0)
-        : undefined;
-      
-      // Filtrer les diagnostics vides avant le merge
-      const incomingDiagnosis = body.structuredData.diagnosis !== undefined
-        ? (body.structuredData.diagnosis as any[]).filter((d: any) => d && (d.code?.trim() || d.label?.trim()))
-        : undefined;
-      
-      // Filtrer les médicaments vides avant le merge
-      const incomingMedications = body.structuredData.medications !== undefined
-        ? (body.structuredData.medications as any[]).filter((m: any) => m && m.name?.trim())
-        : undefined;
-      
-      mergedData = {
-        ...existingData,
-        ...body.structuredData,
-        // Fusionner les tableaux de manière intelligente avec filtrage
-        symptoms: incomingSymptoms !== undefined 
-          ? incomingSymptoms 
-          : (existingData.symptoms || []).filter((s: string) => s && s.trim().length > 0),
-        diagnosis: incomingDiagnosis !== undefined
-          ? incomingDiagnosis
-          : (existingData.diagnosis || []).filter((d: any) => d && (d.code?.trim() || d.label?.trim())),
-        medications: incomingMedications !== undefined
-          ? incomingMedications
-          : (existingData.medications || []).filter((m: any) => m && m.name?.trim()),
-      };
-
-      // Log pour debug
-      this.logger.debug(`[updateDraft] Merged data for draft ${id}:`, {
-        symptomsCount: mergedData.symptoms?.length || 0,
-        diagnosisCount: mergedData.diagnosis?.length || 0,
-        medicationsCount: mergedData.medications?.length || 0,
-      });
-
-      // 4. Valider les données fusionnées avec le schéma Zod complet
-      const validatedData = ConsultationSchema.parse(mergedData);
-
-      // 5. Mettre à jour le draft
-      const updatedDraft = await this.prisma.consultationDraft.update({
-        where: { id },
-        data: {
-          structuredData: validatedData as any,
-          updatedAt: new Date(),
-        },
-      });
-
-      this.logger.log(`Draft ${id} updated successfully`);
-
-      return {
-        draft: {
-          id: updatedDraft.id,
-          patientId: updatedDraft.patientId,
-          status: updatedDraft.status,
-          updatedAt: updatedDraft.updatedAt,
-        },
-        consultation: validatedData,
-      };
-    } catch (error) {
-      // Log détaillé pour le debug
-      if (error instanceof ZodError) {
-        this.logger.error(`[updateDraft] Validation Zod failed for draft ${id}:`, JSON.stringify(error.errors, null, 2));
-        this.logger.error(`[updateDraft] Merged data that failed validation:`, JSON.stringify(mergedData, null, 2));
-        throw new BadRequestException({
-          message: 'Données structurées invalides',
-          errors: error.errors,
-          details: {
-            draftId: id,
-            mergedData: mergedData,
-          },
-        });
-      }
-      
-      this.logger.error(`[updateDraft] Error updating draft ${id}:`, error instanceof Error ? error.message : String(error));
-      if (error instanceof Error && error.stack) {
-        this.logger.error(`[updateDraft] Stack trace:`, error.stack);
-      }
-      
-      // Si c'est déjà une HttpException, la propager telle quelle
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
-        throw error;
-      }
-      
-      throw new BadRequestException({
-        message: 'Erreur lors de la mise à jour du draft',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
+    return this.scribeService.updateDraft(id, body.structuredData ?? {});
   }
 
   /**
