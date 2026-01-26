@@ -1,0 +1,20 @@
+### Tracer Bullet — Scribe MOCK
+### Prérequis: API lancée (npm run dev:api), AI_MODE=MOCK, DB prête (npm run prisma:push)
+
+@base = http://localhost:3000
+@analyze = {{base}}/api/scribe/analyze
+@drafts = {{base}}/api/scribe/drafts
+
+### Health Scribe
+GET {{base}}/api/scribe/health
+
+### POST /api/scribe/analyze (payload basique)
+POST {{analyze}}
+Content-Type: application/json
+
+{
+  "text": "Patient 45 ans, fièvre 38.5°C, toux sèche depuis 3 jours. Pas d'allergies connues."
+}
+
+### GET /api/scribe/drafts (derniers)
+GET {{drafts}}?limit=5

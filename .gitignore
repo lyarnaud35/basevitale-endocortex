@@ -1,0 +1,36 @@
+# compiled output
+/dist
+/tmp
+/out-tsc
+/bazel-out
+
+# Node
+/node_modules
+npm-debug.log
+yarn-error.log
+
+# testing
+/coverage
+
+# IDEs and editors
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Nx
+.nx/cache
+.nx/workspace-data
+
+# OS
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+# Keep .env.example for documentation
+!.env.example

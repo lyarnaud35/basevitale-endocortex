@@ -1,0 +1,21 @@
+{
+  "displayName": "api-e2e",
+  "preset": "../../jest.preset.js",
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testMatch": ["<rootDir>/test/**/*.e2e-spec.ts"],
+  "transform": {
+    "^.+\\.ts$": ["ts-jest", { "tsconfig": "<rootDir>/test/tsconfig.e2e.json" }]
+  },
+  "moduleNameMapper": {
+    "^@basevitale/shared$": "<rootDir>/../../libs/shared/src/index.ts"
+  },
+  "moduleFileExtensions": ["ts", "js", "json"],
+  "transformIgnorePatterns": [
+    "/node_modules/",
+    "<rootDir>/src/prisma/client"
+  ],
+  "testTimeout": 30000,
+  "maxWorkers": 1,
+  "verbose": true
+}

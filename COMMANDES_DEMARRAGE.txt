@@ -1,0 +1,25 @@
+==========================================
+🚀 COMMANDES DE DÉMARRAGE - BaseVitale
+==========================================
+
+❌ NE PAS UTILISER :
+   nx run-many -t serve
+
+✅ UTILISER À LA PLACE :
+
+TERMINAL 1 (Backend) :
+   cd /Users/ARNAUD/Developer/BASEVITALE
+   npm run dev:api
+
+TERMINAL 2 (Frontend) :
+   cd /Users/ARNAUD/Developer/BASEVITALE
+   npm run dev:web
+
+==========================================
+URLs après démarrage :
+==========================================
+Backend API :  http://localhost:3000/api/health
+Frontend Web : http://localhost:4200
+Page Test :    http://localhost:4200/scribe/test
+
+==========================================

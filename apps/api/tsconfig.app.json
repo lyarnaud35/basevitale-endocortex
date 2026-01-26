@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc",
+    "module": "commonjs",
+    "emitDecoratorMetadata": true,
+    "target": "ES2022",
+    "baseUrl": ".",
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "paths": {
+      "@basevitale/shared": ["../../libs/shared/src/index.ts"]
+    },
+    // Désactiver les vérifications de fichiers déclarés pour éviter TS6305
+    "declaration": false,
+    "declarationMap": false
+  },
+  "exclude": ["jest.config.ts", "src/**/*.spec.ts", "src/**/*.test.ts"],
+  "include": ["src/**/*.ts"]
+  // Références désactivées temporairement car shared n'est pas buildée
+  // "references": [
+  //   {
+  //     "path": "../../libs/shared/tsconfig.lib.json"
+  //   }
+  // ]
+}
