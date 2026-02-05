@@ -1,23 +1,14 @@
 import { Module } from '@nestjs/common';
-import { BillingValidationService } from './billing-validation.service';
-import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
-import { PrismaModule } from '../prisma/prisma.module';
-import { MetricsService } from '../common/services/metrics.service';
+import { BillingService } from './billing.service';
 
 /**
- * BillingModule
- * 
- * Module complet pour le Module E+ (Facturation)
- * 
- * Version Cabinet - Sprint 3: Automatisme Déterministe
- * 
- * RÈGLE INVARIANTE: "Pas de Preuve = Pas de Facture"
+ * BillingModule – Squelette (coquille vide).
+ * Module E+ Facturation. Tuyaux posés, logique à brancher plus tard.
  */
 @Module({
-  imports: [PrismaModule],
   controllers: [BillingController],
-  providers: [BillingValidationService, BillingService, MetricsService],
-  exports: [BillingValidationService, BillingService],
+  providers: [BillingService],
+  exports: [BillingService],
 })
 export class BillingModule {}

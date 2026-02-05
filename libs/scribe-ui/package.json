@@ -1,0 +1,25 @@
+{
+  "name": "@basevitale/scribe-ui",
+  "version": "0.0.1",
+  "description": "Widget Medical Scribe – dictée, correction, validation (Symbiote Protocol)",
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "type": "module",
+  "peerDependencies": {
+    "react": ">=17.0.0",
+    "react-dom": ">=17.0.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "require": "./src/index.js",
+      "types": "./src/index.d.ts"
+    }
+  },
+  "files": [
+    "src",
+    "INTEGRATION.md",
+    "README.md"
+  ]
+}

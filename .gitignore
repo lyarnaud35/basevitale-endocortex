@@ -30,6 +30,7 @@ yarn-error.log
 
 # Environment
 .env
+.env.bak
 .env.local
 .env.*.local
 # Keep .env.example for documentation

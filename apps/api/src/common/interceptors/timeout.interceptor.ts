@@ -28,6 +28,11 @@ export class TimeoutInterceptor implements NestInterceptor {
       this.reflector.get<number>(TIMEOUT_MS_KEY, context.getClass()) ??
       DEFAULT_TIMEOUT_MS;
 
+    // 0 = pas de timeout (connexions longues type SSE)
+    if (ms <= 0) {
+      return next.handle();
+    }
+
     return next.handle().pipe(
       timeout(ms),
       catchError((err) => {

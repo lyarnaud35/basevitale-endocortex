@@ -15,7 +15,10 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@basevitale/shared": ["libs/shared/src/index.ts"]
+      "@basevitale/scribe-ui": ["libs/scribe-ui/src/index.ts"],
+      "@basevitale/shared": ["libs/shared/src/index.ts"],
+      "@basevitale/symbiote-ui": ["libs/symbiote-ui/src/index.ts"],
+      "@basevitale/ghost-sdk": ["libs/ghost-sdk/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

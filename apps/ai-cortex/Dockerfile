@@ -13,8 +13,10 @@ COPY requirements.txt .
 # Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copier le code source
+# Copier le code source (Cerveau structurant: domain + services)
 COPY main.py .
+COPY domain ./domain
+COPY services ./services
 
 # Créer un script de démarrage pour meilleure gestion des variables d'environnement
 RUN echo '#!/bin/bash\n\

@@ -2,9 +2,12 @@ import './global.css';
 import { Providers } from './providers';
 import { ErrorBoundary } from '../lib/components/ErrorBoundary';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'BaseVitale',
   description: 'BaseVitale Application',
+  icons: { icon: '/favicon.ico' },
 };
 
 export default function RootLayout({

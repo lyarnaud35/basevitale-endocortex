@@ -14,11 +14,22 @@ import {
   NotFoundException,
   BadRequestException,
   ServiceUnavailableException,
+  InternalServerErrorException,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiExtraModels } from '@nestjs/swagger';
 import { ScribeService } from './scribe.service';
-import { KnowledgeGraphService } from '../knowledge-graph/knowledge-graph.service';
+import {
+  IntelligenceResponseDto,
+  IntelligenceTimelineItemDto,
+  IntelligenceAlertDto,
+  BillingCodeDto,
+  PrescriptionItemDto,
+  ValidateFinalSuccessDto,
+  GuardianBlockErrorDto,
+} from './scribe.dto';
+import { ScribeGraphProjectorService } from './graph-projector.service';
+import { GraphReaderService } from './graph-reader.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { Neo4jService } from '../neo4j/neo4j.service';
 import { ZodValidationPipe } from '../common';
 import { AuthGuard } from '../common/guards/auth.guard';
 import { ConsultationSchema, type Consultation } from '@basevitale/shared';
@@ -28,16 +39,26 @@ import { ScribeHealthService } from './scribe.health.service';
 import { MetricsService } from '../common/services/metrics.service';
 import { Public } from '../common/decorators/public.decorator';
 import { Timeout } from '../common/decorators/timeout.decorator';
+import { ScribeMachineService } from './scribe-machine.service';
+import {
+  ScribeEventSchema,
+  StartRecordEventSchema,
+  StopRecordEventSchema,
+  UpdateTextEventSchema,
+  ConfirmEventSchema,
+  type ScribeMachineState,
+} from './scribe-machine.schema';
 
 /**
  * ScribeController
- * 
+ *
  * Endpoints pour le Module S (Scribe/Cortex Sémantique)
- * 
+ *
  * Version BaseVitale V112+ - Toutes phases complétées
- * 
+ *
  * INVARIANT: Toute donnée médicale doit passer par le moteur d'Abstraction
  */
+@ApiTags('Scribe')
 @Controller('scribe')
 @UseGuards(AuthGuard)
 export class ScribeController {
@@ -57,48 +78,54 @@ export class ScribeController {
 
   constructor(
     private readonly scribeService: ScribeService,
-    private readonly knowledgeGraphService: KnowledgeGraphService,
+    private readonly scribeGraphProjector: ScribeGraphProjectorService,
+    private readonly graphReader: GraphReaderService,
     private readonly prisma: PrismaService,
-    private readonly neo4jService: Neo4jService,
     private readonly scribeHealthService: ScribeHealthService,
     private readonly metricsService: MetricsService,
+    private readonly scribeMachineService: ScribeMachineService,
   ) {}
 
   /**
    * PHASE "TRACER BULLET" : Endpoint POST /scribe/analyze
-   * 
+   *
    * Analyse un texte de consultation.
    * En mode MOCK : Génère une réponse statique factice et la sauvegarde dans ConsultationDraft.
-   * 
+   *
    * @param body - Contient le texte à analyser
    * @returns Consultation structurée selon ConsultationSchema
    */
+  @ApiOperation({ summary: 'Analyser un texte de consultation' })
+  @ApiResponse({ status: 200, description: 'Consultation structurée (symptoms, diagnosis, medications)' })
+  @ApiResponse({ status: 400, description: 'Texte vide ou invalide' })
   @Post('analyze')
   @HttpCode(HttpStatus.OK)
   @Timeout(360000) // 6 min : GPU lock + Ollama/Llama (1er appel lent)
   async analyze(
     @Body(new ZodValidationPipe(z.object({
       text: z.string().min(1, 'Le texte est requis').max(50000, 'Le texte ne peut pas dépasser 50000 caractères'),
+      patientId: z.string().min(1).max(100).optional(),
+      externalPatientId: z.string().min(1).max(100).optional(),
     })))
     body: {
       text: string;
+      patientId?: string;
+      externalPatientId?: string;
     },
   ) {
     try {
-      // Sanitization de l'input
       const sanitizedText = sanitizeString(body.text);
-      
-      // Validation de la longueur après sanitization
+      const effectiveId = body.externalPatientId?.trim() || body.patientId?.trim();
+
       if (sanitizedText.length === 0) {
         throw new BadRequestException('Le texte est vide après nettoyage');
       }
-      
       if (sanitizedText.length > 50000) {
         throw new BadRequestException('Le texte est trop long (max 50000 caractères)');
       }
-      
+
       this.logger.log(
-        `[Tracer Bullet] POST /scribe/analyze - Analyzing text (length: ${sanitizedText.length})`,
+        `[Tracer Bullet] POST /scribe/analyze - Analyzing text (length: ${sanitizedText.length}, patientId: ${effectiveId || 'none'})`,
       );
 
       const consultation = await this.scribeService.analyze(sanitizedText);
@@ -138,18 +165,20 @@ export class ScribeController {
     @Body(new ZodValidationPipe(z.object({
       text: z.string().min(1, 'Le texte est requis'),
       patientId: z.string().min(1).optional(),
+      externalPatientId: z.string().min(1).optional(),
     })))
     body: {
       text: string;
       patientId?: string;
+      externalPatientId?: string;
     },
   ) {
-    const { text, patientId } = body;
+    const effectiveId = body.externalPatientId?.trim() || body.patientId?.trim();
     this.logger.log(
-      `Analyzing consultation (text length: ${text.length}, patientId: ${patientId || 'none'})`,
+      `Analyzing consultation (text length: ${body.text.length}, patientId: ${effectiveId || 'none'})`,
     );
 
-    const consultation = await this.scribeService.analyzeConsultation(text, patientId);
+    const consultation = await this.scribeService.analyzeConsultation(body.text, effectiveId || undefined);
 
     return consultation;
   }
@@ -157,12 +186,21 @@ export class ScribeController {
   /**
    * PHASE B : Process dictation - Front → NestJS → Postgres
    * POST /scribe/process-dictation
-   * 
+   *
    * Reçoit un texte brut de dictée, l'analyse (MOCK/CLOUD/LOCAL),
-   * et sauvegarde le Draft dans ConsultationDraft (Postgres JSONB)
-   * 
+   * et sauvegarde le Draft dans ConsultationDraft (Postgres JSONB).
+   * Consultation inclut symptoms, diagnosis, medications, billingCodes (CCAM/NGAP), prescription (ordonnance).
+   *
    * Law II: Hybrid Toggle - Respecte AI_MODE
    */
+  @ApiOperation({
+    summary: 'Analyser une dictée et créer un brouillon',
+    description:
+      'Analyse (MOCK/CLOUD/LOCAL), crée un ConsultationDraft. Réponse: success, draft, consultation (symptoms, diagnosis, medications, billingCodes, prescription).',
+  })
+  @ApiExtraModels(BillingCodeDto, PrescriptionItemDto)
+  @ApiResponse({ status: 201, description: 'Draft créé ; consultation structurée (billingCodes, prescription inclus).' })
+  @ApiResponse({ status: 400, description: 'Texte ou patientId invalide' })
   @Post('process-dictation')
   @HttpCode(HttpStatus.CREATED)
   @Timeout(360000) // 6 min : attente GPU lock + appel ai-cortex/Ollama (1er inference lent)
@@ -203,7 +241,9 @@ export class ScribeController {
       );
 
       this.logger.debug(
-        `Analyzed consultation: ${consultation.symptoms.length} symptoms, ${consultation.diagnosis.length} diagnoses, ${consultation.medications.length} medications`,
+        `Analyzed consultation: ${consultation.symptoms.length} symptoms, ${consultation.diagnosis.length} diagnoses, ` +
+          `${consultation.medications.length} medications, ${consultation.billingCodes?.length ?? 0} billingCodes, ` +
+          `${consultation.prescription?.length ?? 0} prescription`,
       );
 
       // 2. Sauvegarder le Draft dans ConsultationDraft (Postgres JSONB)
@@ -238,6 +278,8 @@ export class ScribeController {
    *
    * Liste les brouillons avec pagination. Filtre optionnel par patientId.
    */
+  @ApiOperation({ summary: 'Lister les brouillons (pagination, filtre patientId)' })
+  @ApiResponse({ status: 200, description: 'items, total, limit, offset' })
   @Get('drafts')
   @HttpCode(HttpStatus.OK)
   async listDrafts(
@@ -348,324 +390,110 @@ export class ScribeController {
   @Post('draft/:id/validate')
   @Put('validate/:id')
   @HttpCode(HttpStatus.OK)
-  async validateDraft(
-    @Param('id') id: string,
-  ) {
-    const validationStartTime = Date.now();
-    this.logger.log(`Validating consultation draft ${id}`);
-    
-    // Métrique: validation démarrée
-    this.metricsService.incrementCounter('scribe.validation.started');
-
-    // 1. Récupérer le draft avec vérification
-    const draft = await this.prisma.consultationDraft.findUnique({
-      where: { id },
-    });
-
-    if (!draft) {
-      throw new NotFoundException(`Consultation draft ${id} not found`);
-    }
-
-    // Vérifier que le draft n'est pas déjà validé
-    if (draft.status === 'VALIDATED') {
-      this.logger.warn(`Draft ${id} is already validated`);
-      return {
-        draft: {
-          id: draft.id,
-          patientId: draft.patientId,
-          status: 'VALIDATED',
-        },
-        nodesCreated: 0,
-        neo4jRelationsCreated: 0,
-        nodes: [],
-        warning: 'Draft was already validated',
-      };
-    }
-
+  async validateDraft(@Param('id') id: string) {
     try {
-      // 2. Valider les données structurées avec Zod
-      let consultation: any;
-      try {
-        consultation = ConsultationSchema.parse(draft.structuredData);
-        this.logger.debug(`Consultation data validated for draft ${id}`);
-      } catch (zodError) {
-        this.logger.error(`Invalid consultation data in draft ${id}`, zodError instanceof Error ? zodError : String(zodError));
-        throw new BadRequestException({
-          message: 'Données structurées invalides',
-          errors: zodError instanceof ZodError ? zodError.errors : [],
-        });
-      }
-
-      // 3. Vérifier si le patient existe (contrainte FK)
-      // Si le patient n'existe pas, on crée les nœuds sans patientId pour éviter violation FK
-      let validPatientId: string | undefined = draft.patientId;
-      try {
-        const patientExists = await this.prisma.patient.findUnique({
-          where: { id: draft.patientId },
-          select: { id: true },
-        });
-        if (!patientExists) {
-          this.logger.warn(
-            `Patient ${draft.patientId} not found in database, creating nodes without patientId`,
-          );
-          validPatientId = undefined; // Laisser undefined pour éviter violation FK
-        } else {
-          this.logger.debug(`Patient ${draft.patientId} exists in database`);
-        }
-      } catch (patientCheckError) {
-        this.logger.warn(
-          `Error checking patient existence for ${draft.patientId}, proceeding without patientId`,
-          patientCheckError instanceof Error ? patientCheckError : String(patientCheckError),
-        );
-        validPatientId = undefined;
-      }
-
-      // 4. Préparer les nœuds sémantiques pour PostgreSQL (batch)
-      // Note: consultationId est null car ConsultationDraft n'est pas une Consultation
-      // La Consultation sera créée plus tard dans le workflow si nécessaire
-      const nodesData = [];
-      
-      // Préparer nœuds pour symptômes
-      for (const symptom of consultation.symptoms || []) {
-        if (typeof symptom === 'string' && symptom.trim().length > 0) {
-          nodesData.push({
-            nodeType: 'SYMPTOM' as const,
-            label: symptom.trim(),
-            description: `Symptôme: ${symptom.trim()}`,
-            consultationId: undefined, // Pas de Consultation encore créée
-            patientId: validPatientId,
-          });
-        }
-      }
-
-      // Préparer nœuds pour diagnostics
-      for (const diag of consultation.diagnosis || []) {
-        if (diag && (diag.code || diag.label)) {
-          nodesData.push({
-            nodeType: 'DIAGNOSIS' as const,
-            label: diag.label || diag.code || 'Diagnostic inconnu',
-            description: `Diagnostic: ${diag.label || diag.code} ${diag.code ? `(${diag.code})` : ''}`,
-            cim10Code: diag.code || null,
-            confidence: typeof diag.confidence === 'number' ? diag.confidence : null,
-            consultationId: undefined, // Pas de Consultation encore créée
-            patientId: validPatientId,
-          });
-        }
-      }
-
-      // Préparer nœuds pour médicaments
-      for (const med of consultation.medications || []) {
-        if (med && med.name && typeof med.name === 'string') {
-          nodesData.push({
-            nodeType: 'MEDICATION' as const,
-            label: med.name.trim(),
-            description: `Médicament: ${med.name}${med.dosage ? ` - ${med.dosage}` : ''}${med.duration ? ` - ${med.duration}` : ''}`,
-            consultationId: undefined, // Pas de Consultation encore créée
-            patientId: validPatientId,
-          });
-        }
-      }
-
-      this.logger.debug(`Prepared ${nodesData.length} nodes for draft ${id}`);
-
-      // 5. Créer les nœuds PostgreSQL en batch (transaction atomique)
-      let nodes = [];
-      try {
-        nodes = nodesData.length > 0 
-          ? await this.knowledgeGraphService.createNodes(nodesData)
-          : [];
-        this.logger.log(`Created ${nodes.length} semantic nodes in PostgreSQL for draft ${id}`);
-      } catch (nodesError) {
-        this.logger.error(`Error creating semantic nodes for draft ${id}`, nodesError instanceof Error ? nodesError : String(nodesError));
-        throw new BadRequestException({
-          message: 'Erreur lors de la création des nœuds sémantiques',
-          error: nodesError instanceof Error ? nodesError.message : 'Unknown error',
-        });
-      }
-
-      // 6. Créer le graphe Neo4j (continue même en cas d'erreur partielle)
-      let neo4jRelationsCreated = 0;
-      let neo4jError: any = null;
-      try {
-        neo4jRelationsCreated = await this.createNeo4jGraph(draft.patientId, consultation);
-        this.logger.log(
-          `Created Neo4j graph for patient ${draft.patientId}: ${neo4jRelationsCreated} relations`,
-        );
-      } catch (neo4jErr) {
-        neo4jError = neo4jErr;
-        this.logger.error('Error creating Neo4j graph (non-blocking)', neo4jErr instanceof Error ? neo4jErr : String(neo4jErr));
-        // Ne pas faire échouer la validation si Neo4j échoue (Law IV: Write Postgres, Sync Neo4j)
-        // Le draft sera validé même si Neo4j n'est pas disponible
-      }
-
-      // 7. Mettre à jour le statut du draft à VALIDATED (Postgres transaction réussie)
-      try {
-        await this.prisma.consultationDraft.update({
-          where: { id },
-          data: { 
-            status: 'VALIDATED',
-            updatedAt: new Date(),
-          },
-        });
-        this.logger.log(`Draft ${id} validated successfully`);
-      } catch (updateError) {
-        this.logger.error(`Error updating draft ${id} status`, updateError instanceof Error ? updateError : String(updateError));
-        // Les nœuds ont été créés mais le statut n'a pas été mis à jour
-        // C'est une situation de corruption partielle - logger l'erreur
-        throw new BadRequestException({
-          message: 'Erreur lors de la mise à jour du statut du draft',
-          error: updateError instanceof Error ? updateError.message : 'Unknown error',
-        });
-      }
-
-      // 8. Enregistrer les métriques de succès
-      const validationDuration = Date.now() - validationStartTime;
-      this.metricsService.recordTiming('scribe.validation.duration', validationDuration);
-      this.metricsService.incrementCounter('scribe.validation.success');
-      this.metricsService.incrementCounter('scribe.validation.nodes_created', nodes.length);
-      this.metricsService.incrementCounter('scribe.validation.neo4j_relations', neo4jRelationsCreated);
-      if (neo4jError) {
-        this.metricsService.incrementCounter('scribe.validation.neo4j_errors');
-      }
-
-      // 9. Retourner le résultat avec métriques (TransformInterceptor ajoute success/data/timestamp)
-      return {
-        draft: {
-          id: draft.id,
-          patientId: draft.patientId,
-          status: 'VALIDATED',
-        },
-        nodesCreated: nodes.length,
-        neo4jRelationsCreated,
-        nodes: nodes.map(node => ({
-          id: node.id,
-          nodeType: node.nodeType,
-          label: node.label,
-          cim10Code: node.cim10Code,
-          confidence: node.confidence,
-        })),
-        ...(neo4jError && {
-          warning: 'Neo4j synchronization completed with errors',
-        }),
-      };
-    } catch (error) {
-      // Métrique: erreur de validation
-      this.metricsService.incrementCounter('scribe.validation.errors');
-      const validationDuration = Date.now() - validationStartTime;
-      this.metricsService.recordTiming('scribe.validation.error_duration', validationDuration);
-      
-      this.logger.error('Error validating draft', error instanceof Error ? error : String(error));
-      throw error;
+      const res = await this.scribeService.validateDraft(id);
+      return { ...res, nodes: [] };
+    } catch (err) {
+      this.logger.error(
+        `[validateDraft] Error validating draft ${id}`,
+        err instanceof Error ? err.message : String(err),
+      );
+      throw err;
     }
   }
 
   /**
-   * Créer le graphe Neo4j pour un patient
-   * Crée (:Patient)-[:HAS_SYMPTOM]->(:Symptom), etc.
+   * Validation finale – POST /scribe/validate/:draftId
+   *
+   * Délègue à validateDraft : C+ Gardien (allergies vs ordonnance) puis Postgres + Neo4j.
+   * En cas de conflit allergie (400), le frontend affiche l’alerte et ne ferme pas le widget.
    */
-  private async createNeo4jGraph(patientId: string, consultation: any): Promise<number> {
-    this.logger.debug(`Creating Neo4j graph for patient ${patientId}`);
-    const queries: Array<{ query: string; parameters: Record<string, any> }> = [];
-
-    // MERGE Patient
-    queries.push({
-      query: `
-        MERGE (p:Patient {id: $patientId})
-        ON CREATE SET p.createdAt = datetime()
-        ON MATCH SET p.updatedAt = datetime()
-        RETURN p
-      `,
-      parameters: { patientId },
-    });
-
-    // Créer les Symptômes et relations
-    for (const symptom of consultation.symptoms || []) {
-      queries.push({
-        query: `
-          MATCH (p:Patient {id: $patientId})
-          MERGE (s:Symptom {label: $symptom})
-          ON CREATE SET s.createdAt = datetime()
-          ON MATCH SET s.updatedAt = datetime()
-          MERGE (p)-[r:HAS_SYMPTOM]->(s)
-          ON CREATE SET r.createdAt = datetime()
-          RETURN r
-        `,
-        parameters: { patientId, symptom },
-      });
-    }
-
-    // Créer les Diagnostics et relations
-    for (const diag of consultation.diagnosis || []) {
-      queries.push({
-        query: `
-          MATCH (p:Patient {id: $patientId})
-          MERGE (d:Diagnosis {code: $code})
-          ON CREATE SET d.label = $label, d.confidence = $confidence, d.createdAt = datetime()
-          ON MATCH SET d.label = $label, d.confidence = $confidence, d.updatedAt = datetime()
-          MERGE (p)-[r:HAS_DIAGNOSIS]->(d)
-          ON CREATE SET r.createdAt = datetime()
-          RETURN r
-        `,
-        parameters: {
-          patientId,
-          code: diag.code,
-          label: diag.label,
-          confidence: diag.confidence,
-        },
-      });
-    }
-
-    // Créer les Médicaments et relations
-    for (const med of consultation.medications || []) {
-      queries.push({
-        query: `
-          MATCH (p:Patient {id: $patientId})
-          MERGE (m:Medication {name: $name})
-          ON CREATE SET m.dosage = $dosage, m.duration = $duration, m.createdAt = datetime()
-          ON MATCH SET m.dosage = $dosage, m.duration = $duration, m.updatedAt = datetime()
-          MERGE (p)-[r:PRESCRIBED]->(m)
-          ON CREATE SET r.createdAt = datetime()
-          RETURN r
-        `,
-        parameters: {
-          patientId,
-          name: med.name,
-          dosage: med.dosage,
-          duration: med.duration,
-        },
-      });
-    }
-
-    if (queries.length > 0) {
-      const results = await this.neo4jService.executeTransaction(queries);
-      // Compter le nombre de relations créées
-      let totalRelations = 0;
-      if (results && Array.isArray(results)) {
-        for (const result of results) {
-          try {
-            // Neo4j Result.summary() peut retourner une Promise selon la version
-            const summary = await Promise.resolve((result as any).summary());
-            if (summary?.counters && typeof summary.counters.relationshipsCreated === 'function') {
-              const created = summary.counters.relationshipsCreated();
-              totalRelations += typeof created === 'number' ? created : 0;
-            }
-          } catch (error) {
-            // Ignorer les erreurs de comptage, continuer
-            this.logger.warn('Error counting Neo4j relationships', error instanceof Error ? error : String(error));
-          }
-        }
+  @ApiOperation({
+    summary: 'Valider un draft (Firewall médical)',
+    description:
+      'Vérifie les allergies du patient (Neo4j), puis écrit en Postgres + Neo4j. ' +
+      'Si le Gardien Causal détecte une ordonnance contre-indiquée → 400 (pas un bug, feature vitale).',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Succès : Données écrites dans Neo4j et Postgres.',
+    type: ValidateFinalSuccessDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "SÉCURITÉ : Interdiction critique (Allergie/Interaction). Le widget gère l'affichage, mais l'API bloque l'écriture.",
+    type: GuardianBlockErrorDto,
+  })
+  @ApiResponse({ status: 404, description: 'Draft introuvable.' })
+  @ApiResponse({ status: 500, description: 'Erreur interne (ex. Neo4j indisponible, projection échouée).' })
+  @ApiExtraModels(ValidateFinalSuccessDto, GuardianBlockErrorDto)
+  @Post('validate/:draftId')
+  @HttpCode(HttpStatus.CREATED)
+  async validateFinal(
+    @Param('draftId') draftId: string,
+  ): Promise<{ success: true; graphNodesCreated: number }> {
+    try {
+      const res = await this.scribeService.validateDraft(draftId);
+      const graphNodesCreated = res.neo4jRelationsCreated ?? 0;
+      this.logger.log(`[validateFinal] Draft ${draftId} validé, ${graphNodesCreated} opérations graphe`);
+      return { success: true, graphNodesCreated };
+    } catch (err) {
+      if (
+        err instanceof NotFoundException ||
+        err instanceof BadRequestException
+      ) {
+        throw err;
       }
-      return totalRelations;
+      this.logger.error(
+        `[validateFinal] Error validating draft ${draftId}`,
+        err instanceof Error ? err.message : String(err),
+      );
+      throw new InternalServerErrorException(
+        err instanceof Error ? err.message : 'Validation finale échouée',
+      );
     }
-    return 0;
+  }
+
+  /**
+   * GET /scribe/patient/:patientId/profile
+   *
+   * Total Recall – Profil médical du patient (consultations, conditions, médicaments, symptômes récurrents).
+   * Lit le graphe Neo4j. Pour l’affichage dans l’app hôte (ex. Ben).
+   */
+  @ApiOperation({ summary: 'Profil médical patient (Total Recall)' })
+  @ApiResponse({ status: 200, description: 'consultations, conditions, medications, symptomsRecurrent' })
+  @ApiResponse({ status: 404, description: 'Patient introuvable' })
+  @Get('patient/:patientId/profile')
+  @HttpCode(HttpStatus.OK)
+  async getPatientProfile(@Param('patientId') patientId: string) {
+    const profile = await this.graphReader.getPatientMedicalProfile(patientId);
+    return profile;
+  }
+
+  /**
+   * GET /scribe/patient/:patientId/intelligence
+   * Agrège profil + alertes Guardian. JSON Human-Ready pour l'app hôte (Ben).
+   */
+  @ApiExtraModels(IntelligenceTimelineItemDto, IntelligenceAlertDto)
+  @ApiOperation({ summary: 'Get Human-Ready Intelligence for Host App' })
+  @ApiResponse({ status: 200, description: 'summary, timeline, activeAlerts, quickActions', type: IntelligenceResponseDto })
+  @ApiResponse({ status: 404, description: 'Patient introuvable' })
+  @Get('patient/:patientId/intelligence')
+  @HttpCode(HttpStatus.OK)
+  async getPatientIntelligence(@Param('patientId') patientId: string) {
+    return this.scribeService.getPatientIntelligence(patientId);
   }
 
   /**
    * GET /scribe/health
-   * 
+   *
    * Health check du Module Scribe avec métriques détaillées
    * Endpoint public pour monitoring
    */
+  @ApiOperation({ summary: 'Health check Scribe (public)' })
+  @ApiResponse({ status: 200, description: 'aiCortex, neo4j, postgres, timestamp' })
   @Get('health')
   @Public()
   @HttpCode(HttpStatus.OK)
@@ -715,6 +543,80 @@ export class ScribeController {
       this.logger.error('Error getting Scribe stats', error instanceof Error ? error : String(error));
       throw error;
     }
+  }
+
+  /**
+   * GHOST PROTOCOL v999 - Endpoints State Machine
+   * 
+   * Le Frontend envoie des INTENTIONS (événements), le Backend répond avec le NOUVEL ÉTAT.
+   */
+
+  /**
+   * POST /scribe/machine/:sessionId/event
+   * 
+   * Envoie un événement à la ScribeMachine.
+   * Retourne le nouvel état de la machine.
+   */
+  @ApiOperation({
+    summary: 'Envoyer un événement à la ScribeMachine (GHOST PROTOCOL)',
+    description:
+      'Envoie une intention (START_RECORD, STOP_RECORD, UPDATE_TEXT, CONFIRM) et reçoit le nouvel état.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Nouvel état de la machine (value, context, updatedAt)',
+  })
+  @ApiResponse({ status: 400, description: 'Événement invalide ou transition non autorisée' })
+  @ApiResponse({ status: 404, description: 'Session introuvable (pour certains événements)' })
+  @Post('machine/:sessionId/event')
+  @HttpCode(HttpStatus.OK)
+  async sendMachineEvent(
+    @Param('sessionId') sessionId: string,
+    @Body(new ZodValidationPipe(ScribeEventSchema)) event: any,
+  ): Promise<ScribeMachineState> {
+    try {
+      this.logger.log(`[${sessionId}] Received event: ${event.type}`);
+      const newState = await this.scribeMachineService.sendEvent(sessionId, event);
+      return newState;
+    } catch (error) {
+      this.logger.error(`[${sessionId}] Error processing event`, error instanceof Error ? error : String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * GET /scribe/machine/:sessionId/state
+   * 
+   * Récupère l'état actuel de la machine.
+   */
+  @ApiOperation({
+    summary: 'Récupérer l\'état actuel de la ScribeMachine',
+    description: 'Retourne l\'état complet (value, context, updatedAt)',
+  })
+  @ApiResponse({ status: 200, description: 'État actuel de la machine' })
+  @ApiResponse({ status: 404, description: 'Session introuvable' })
+  @Get('machine/:sessionId/state')
+  @HttpCode(HttpStatus.OK)
+  async getMachineState(@Param('sessionId') sessionId: string): Promise<ScribeMachineState> {
+    return this.scribeMachineService.getState(sessionId);
+  }
+
+  /**
+   * POST /scribe/machine/:sessionId/reset
+   * 
+   * Réinitialise la machine à IDLE (nouveau cycle).
+   */
+  @ApiOperation({
+    summary: 'Réinitialiser la ScribeMachine',
+    description: 'Remet la machine à l\'état IDLE pour un nouveau cycle',
+  })
+  @ApiResponse({ status: 200, description: 'Machine réinitialisée' })
+  @ApiResponse({ status: 404, description: 'Session introuvable' })
+  @Post('machine/:sessionId/reset')
+  @HttpCode(HttpStatus.OK)
+  async resetMachine(@Param('sessionId') sessionId: string): Promise<{ success: true }> {
+    this.scribeMachineService.resetMachine(sessionId);
+    return { success: true };
   }
 
 }

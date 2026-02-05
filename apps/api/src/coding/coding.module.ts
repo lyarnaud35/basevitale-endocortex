@@ -1,21 +1,15 @@
 import { Module } from '@nestjs/common';
-import { CodingService } from './coding.service';
 import { CodingController } from './coding.controller';
-import { ScribeModule } from '../scribe/scribe.module';
-import { PrismaModule } from '../prisma/prisma.module';
-import { MetricsService } from '../common/services/metrics.service';
+import { CodingService } from './coding.service';
+import { CodingGhostService } from './coding-ghost.service';
 
 /**
- * CodingModule - Module B+ (Codage)
- * 
- * Version Cabinet - Sprint 3: Automatisme Déterministe
- * 
- * Gère le codage automatique CIM-10/11 avec scores de confiance
+ * CodingModule – Ghost Protocol (CodingMachine + Silence Attentionnel).
+ * CIM-10/11, seuil 0.6 → SUGGESTING ou SILENT.
  */
 @Module({
-  imports: [PrismaModule, ScribeModule],
   controllers: [CodingController],
-  providers: [CodingService, MetricsService],
-  exports: [CodingService],
+  providers: [CodingService, CodingGhostService],
+  exports: [CodingService, CodingGhostService],
 })
 export class CodingModule {}

@@ -48,5 +48,12 @@
         "serveStaticTargetName": "serve-static"
       }
     }
-  ]
+  ],
+  "generators": {
+    "@nx/react": {
+      "library": {
+        "unitTestRunner": "none"
+      }
+    }
+  }
 }

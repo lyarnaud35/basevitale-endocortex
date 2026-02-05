@@ -48,6 +48,7 @@ export class ScribeProcessor {
       text: string;
       patientId?: string;
       jsonSchema: any;
+      system_prompt?: string;
     }>,
   ) {
     const startTime = Date.now();
@@ -95,13 +96,13 @@ export class ScribeProcessor {
 
       const duration = Date.now() - startTime;
       this.logger.log(
-        `[Job ${job.id}] ✅ Completed in ${duration}ms: ${consultation.symptoms.length} symptoms, ${consultation.diagnosis.length} diagnoses, ${consultation.medications.length} medications`,
+        `[Job ${job.id}] ✅ Completed in ${duration}ms: ${consultation.symptoms.length} symptoms, ${consultation.diagnosis.length} diagnoses, ` +
+          `${consultation.medications.length} medications, ${consultation.billingCodes?.length ?? 0} billingCodes, ${consultation.prescription?.length ?? 0} prescription`,
       );
       this.metricsService.incrementCounter('scribe.job.completed');
       this.metricsService.recordTiming('scribe.job.duration', duration);
 
       await job.progress(100);
-      return consultation;
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(

@@ -1,0 +1,30 @@
+{
+  "name": "ghost-sdk",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/ghost-sdk/src",
+  "projectType": "library",
+  "tags": ["type:shared", "scope:frontend"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/ghost-sdk",
+        "main": "libs/ghost-sdk/src/index.ts",
+        "tsConfig": "libs/ghost-sdk/tsconfig.lib.json",
+        "assets": ["libs/ghost-sdk/*.md"]
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/ghost-sdk/jest.config.ts",
+        "passWithNoTests": true
+      }
+    }
+  }
+}

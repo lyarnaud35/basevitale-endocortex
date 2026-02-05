@@ -1,12 +1,23 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpService } from '@nestjs/axios';
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  ServiceUnavailableException,
+  InternalServerErrorException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ScribeService } from './scribe.service';
 import { MetricsService } from '../common/services/metrics.service';
 import { GpuLockService } from '../common/services/gpu-lock.service';
 import { ConfigService } from '../common/services/config.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { GraphProjectorService } from '../knowledge-graph/graph-projector.service';
+import { GuardianService } from '../knowledge-graph/guardian.service';
+import { Neo4jService } from '../neo4j/neo4j.service';
+import { ScribeGuardianService } from './guardian.service';
+import { ScribeGraphProjectorService } from './graph-projector.service';
+import { GraphReaderService } from './graph-reader.service';
+import { SecurityService } from '../medical/security.service';
 import { getQueueToken } from '@nestjs/bull';
 import { of, throwError } from 'rxjs';
 import { ConsultationSchema, Consultation } from '@basevitale/shared';
@@ -37,6 +48,37 @@ describe('ScribeService', () => {
 
   const mockGraphProjector = {
     projectConsultation: jest.fn().mockResolvedValue(undefined),
+    projectValidation: jest.fn().mockResolvedValue(3),
+  };
+
+  const mockScribeGraphProjector = {
+    projectDraft: jest.fn().mockResolvedValue(5),
+  };
+
+  const mockGuardian = {
+    checkMedicationsAgainstAllergies: jest.fn().mockResolvedValue({ safe: true, conflicts: [] }),
+  };
+
+  const mockScribeGuardian = {
+    checkSafety: jest.fn().mockResolvedValue({ alerts: [] as string[] }),
+  };
+
+  const mockGraphReader = {
+    getPatientMedicalProfile: jest.fn().mockResolvedValue({
+      patientId: 'patient-1',
+      consultations: [{ id: 'c1', date: '2024-01-15' }],
+      conditions: [{ code: 'I10', name: 'Hypertension', since: '2023-01-01' }],
+      medications: [{ name: 'Amlodipine', dosage: '5mg' }],
+      symptomsRecurrent: ['Céphalées'],
+    }),
+  };
+
+  const mockNeo4j = {
+    getConnectionStats: jest.fn().mockReturnValue({ connected: true }),
+  };
+
+  const mockSecurityService = {
+    validatePrescription: jest.fn().mockResolvedValue({ authorized: true, reason: '' }),
   };
 
   const mockConfigService = {
@@ -74,6 +116,12 @@ describe('ScribeService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: PrismaService, useValue: mockPrisma },
         { provide: GraphProjectorService, useValue: mockGraphProjector },
+        { provide: GuardianService, useValue: mockGuardian },
+        { provide: Neo4jService, useValue: mockNeo4j },
+        { provide: ScribeGuardianService, useValue: mockScribeGuardian },
+        { provide: ScribeGraphProjectorService, useValue: mockScribeGraphProjector },
+        { provide: GraphReaderService, useValue: mockGraphReader },
+        { provide: SecurityService, useValue: mockSecurityService },
         { provide: getQueueToken('scribe-consultation'), useValue: mockQueue },
       ],
     }).compile();
@@ -110,7 +158,7 @@ describe('ScribeService', () => {
       expect(mockGraphProjector.projectConsultation).toHaveBeenCalled();
     });
 
-    it('!MOCK + Python OK: POST /process-generic { text, schema }, draft + projection', async () => {
+    it('LOCAL + Python OK: POST /process { text, mode }, draft + projection', async () => {
       process.env.AI_MODE = 'LOCAL';
       const text = 'Patient avec fièvre';
       const mockData = {
@@ -120,11 +168,11 @@ describe('ScribeService', () => {
         diagnosis: [{ code: 'J11.1', label: 'Grippe', confidence: 0.9 }],
         medications: [{ name: 'Doliprane', dosage: '1g', duration: '7j' }],
       };
-      mockHttpService.post.mockReturnValue(of({ data: { data: mockData } }));
+      mockHttpService.post.mockReturnValue(of({ data: mockData }));
       const result = await service.analyze(text);
       expect(mockHttpService.post).toHaveBeenCalledWith(
-        expect.stringMatching(/\/process-generic$/),
-        expect.objectContaining({ text, schema: expect.any(Object) }),
+        expect.stringMatching(/\/process$/),
+        expect.objectContaining({ text, mode: 'PRECISE' }),
         expect.any(Object),
       );
       expect(result.patientId).toBe('patient-py');
@@ -132,16 +180,36 @@ describe('ScribeService', () => {
       expect(mockGraphProjector.projectConsultation).toHaveBeenCalledWith('patient-py', expect.any(Object));
     });
 
-    it('!MOCK + Python KO: fallback mock, pas de 503', async () => {
+    it('CLOUD + Python OK: POST /process { text, mode: FAST }, draft + projection', async () => {
+      process.env.AI_MODE = 'CLOUD';
+      const text = 'Angine, fièvre';
+      const mockData = {
+        patientId: 'pat-001',
+        transcript: text,
+        symptoms: ['Fièvre', 'Mal de gorge'],
+        diagnosis: [{ code: 'J02.9', label: 'Angine', confidence: 0.85 }],
+        medications: [{ name: 'Amoxicilline', dosage: '1g', duration: '7 jours' }],
+      };
+      mockHttpService.post.mockReturnValue(of({ data: mockData }));
+      const result = await service.analyze(text);
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        expect.stringMatching(/\/process$/),
+        expect.objectContaining({ text, mode: 'FAST' }),
+        expect.any(Object),
+      );
+      expect(result.patientId).toBe('pat-001');
+      expect(mockPrisma.consultationDraft.create).toHaveBeenCalled();
+      expect(mockGraphProjector.projectConsultation).toHaveBeenCalledWith('pat-001', expect.any(Object));
+    });
+
+    it('LOCAL + Python KO: 503 "Service IA indisponible" (pas de fallback mock)', async () => {
       process.env.AI_MODE = 'LOCAL';
       mockHttpService.post.mockReturnValue(
         throwError(() => new Error('Connection refused')),
       );
-      const result = await service.analyze('Texte');
-      expect(ConsultationSchema.parse(result)).toBeDefined();
-      expect(result.transcript).toBe('Texte');
-      expect(mockPrisma.consultationDraft.create).toHaveBeenCalled();
-      expect(mockGraphProjector.projectConsultation).toHaveBeenCalled();
+      await expect(service.analyze('Texte')).rejects.toThrow(ServiceUnavailableException);
+      expect(mockPrisma.consultationDraft.create).not.toHaveBeenCalled();
+      expect(mockGraphProjector.projectConsultation).not.toHaveBeenCalled();
     });
   });
 
@@ -271,6 +339,8 @@ describe('ScribeService', () => {
         symptoms: ['Fièvre'],
         diagnosis: [{ code: 'J11.1', label: 'Grippe', confidence: 0.9 }],
         medications: [{ name: 'Doliprane', dosage: '1g', duration: '7j' }],
+        billingCodes: [],
+        prescription: [{ drug: 'Doliprane', dosage: '1g', duration: '7j' }],
       },
     };
     it('should merge partial, validate, update and return { draft, consultation }', async () => {
@@ -298,6 +368,163 @@ describe('ScribeService', () => {
     it('should throw NotFoundException when draft missing', async () => {
       mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(null);
       await expect(service.updateDraft('missing', {})).rejects.toThrow('Consultation draft missing not found');
+    });
+  });
+
+  describe('validateDraft', () => {
+    const draft = {
+      id: 'draft-1',
+      patientId: 'patient-123',
+      status: 'DRAFT',
+      structuredData: {
+        patientId: 'patient-123',
+        transcript: 'Consultation',
+        symptoms: ['Fièvre'],
+        diagnosis: [{ code: 'J11.1', label: 'Grippe', confidence: 0.9 }],
+        medications: [{ name: 'Doliprane', dosage: '1g', duration: '7j' }],
+        billingCodes: [{ code: 'HBLT001', label: 'Consultation', confidence: 0.85 }],
+        prescription: [{ drug: 'Doliprane', dosage: '1g', duration: '7j' }],
+      },
+    };
+
+    it('should run ÉTAPE A (Postgres VALIDATED) then B (Neo4j Scribe projector), return draft + counts', async () => {
+      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(draft);
+      mockPrisma.consultationDraft.update.mockResolvedValueOnce({ ...draft, status: 'VALIDATED' });
+
+      const res = await service.validateDraft('draft-1');
+
+      expect(mockPrisma.consultationDraft.findUnique).toHaveBeenCalledWith({ where: { id: 'draft-1' } });
+      expect(mockPrisma.consultationDraft.update).toHaveBeenCalledWith({
+        where: { id: 'draft-1' },
+        data: { status: 'VALIDATED', updatedAt: expect.any(Date) },
+      });
+      expect(mockScribeGraphProjector.projectDraft).toHaveBeenCalledWith(draft);
+      expect(res.draft.status).toBe('VALIDATED');
+      expect(res.neo4jRelationsCreated).toBe(5);
+      expect(res.nodesCreated).toBe(0);
+    });
+
+    it('should return early with warning when already VALIDATED', async () => {
+      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce({ ...draft, status: 'VALIDATED' });
+
+      const res = await service.validateDraft('draft-1');
+
+      expect(mockPrisma.consultationDraft.update).not.toHaveBeenCalled();
+      expect(mockScribeGraphProjector.projectDraft).not.toHaveBeenCalled();
+      expect(res.warning).toBe('Draft was already validated');
+      expect(res.nodesCreated).toBe(0);
+      expect(res.neo4jRelationsCreated).toBe(0);
+    });
+
+    it('should throw NotFoundException when draft missing', async () => {
+      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(null);
+      await expect(service.validateDraft('missing')).rejects.toThrow('Consultation draft missing not found');
+    });
+
+    it('should throw 503 when Neo4j not connected (no Postgres update)', async () => {
+      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(draft);
+      (mockNeo4j.getConnectionStats as jest.Mock).mockReturnValueOnce({ connected: false });
+
+      await expect(service.validateDraft('draft-1')).rejects.toThrow(ServiceUnavailableException);
+      expect(mockPrisma.consultationDraft.update).not.toHaveBeenCalled();
+      expect(mockScribeGraphProjector.projectDraft).not.toHaveBeenCalled();
+      expect(mockGuardian.checkMedicationsAgainstAllergies).not.toHaveBeenCalled();
+    });
+
+    it('should rollback Postgres to DRAFT and throw 500 when Neo4j projection fails', async () => {
+      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(draft);
+      mockPrisma.consultationDraft.update.mockResolvedValue({ ...draft, status: 'VALIDATED' });
+      mockScribeGraphProjector.projectDraft.mockRejectedValueOnce(new Error('Neo4j connection refused'));
+
+      await expect(service.validateDraft('draft-1')).rejects.toThrow(InternalServerErrorException);
+
+      expect(mockScribeGraphProjector.projectDraft).toHaveBeenCalledWith(draft);
+      expect(mockPrisma.consultationDraft.update).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.consultationDraft.update).toHaveBeenNthCalledWith(1, {
+        where: { id: 'draft-1' },
+        data: { status: 'VALIDATED', updatedAt: expect.any(Date) },
+      });
+      expect(mockPrisma.consultationDraft.update).toHaveBeenNthCalledWith(2, {
+        where: { id: 'draft-1' },
+        data: { status: 'DRAFT', updatedAt: expect.any(Date) },
+      });
+    });
+
+    it('should block validation (C+ Gardien) when medication contra-indiquée', async () => {
+      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(draft);
+      mockGuardian.checkMedicationsAgainstAllergies.mockResolvedValueOnce({
+        safe: false,
+        conflicts: [
+          {
+            medication: 'Amoxicilline',
+            allergy: 'pénicilline',
+            reason: 'Médication contre-indiquée : Amoxicilline (allergie connue : pénicilline)',
+          },
+        ],
+      });
+
+      await expect(service.validateDraft('draft-1')).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.consultationDraft.update).not.toHaveBeenCalled();
+      expect(mockScribeGraphProjector.projectDraft).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPatientIntelligence', () => {
+    it('should return summary, timeline, activeAlerts, quickActions', async () => {
+      mockGraphReader.getPatientMedicalProfile.mockResolvedValueOnce({
+        patientId: 'p1',
+        consultations: [{ id: 'c1', date: '2024-06-01' }, { id: 'c2', date: '2024-05-15' }],
+        conditions: [{ code: 'I10', name: 'Hypertension', since: '2023-01-01' }],
+        medications: [{ name: 'Amlodipine', dosage: '5mg' }],
+        symptomsRecurrent: ['Céphalées'],
+      });
+      mockScribeGuardian.checkSafety.mockResolvedValueOnce({ alerts: [] });
+
+      const res = await service.getPatientIntelligence('p1');
+
+      expect(mockGraphReader.getPatientMedicalProfile).toHaveBeenCalledWith('p1');
+      expect(mockScribeGuardian.checkSafety).toHaveBeenCalled();
+      expect(res.summary).toContain('1 condition(s)');
+      expect(res.summary).toContain('Hypertension');
+      expect(res.summary).toContain('1 médicament(s)');
+      expect(res.summary).toContain('2 consultation(s)');
+      expect(res.timeline).toHaveLength(2);
+      expect(res.timeline[0].type).toBe('consultation');
+      expect(res.activeAlerts).toEqual([]);
+      expect(res.quickActions).toContain('Renouvellement ordonnance');
+      expect(res.quickActions).toContain('Planifier prochain RDV');
+    });
+
+    it('should map guardian alerts to activeAlerts with level', async () => {
+      mockGraphReader.getPatientMedicalProfile.mockResolvedValueOnce({
+        patientId: 'p2',
+        consultations: [],
+        conditions: [],
+        medications: [{ name: 'Penicillin' }],
+        symptomsRecurrent: [],
+      });
+      mockScribeGuardian.checkSafety.mockResolvedValueOnce({
+        alerts: ['Attention : Allergie Pénicilline détectée (via classe médicamenteuse).'],
+      });
+
+      const res = await service.getPatientIntelligence('p2');
+
+      expect(res.activeAlerts).toHaveLength(1);
+      expect(res.activeAlerts[0].level).toBe('HIGH');
+      expect(res.activeAlerts[0].message).toContain('Pénicilline');
+      expect(res.quickActions).toContain('Vérifier alertes');
+    });
+
+    it('should return empty intelligence when patient not in Neo4j (no 404)', async () => {
+      mockGraphReader.getPatientMedicalProfile.mockRejectedValueOnce(new NotFoundException('Patient x introuvable'));
+
+      const res = await service.getPatientIntelligence('x');
+
+      expect(res.summary).toBe('Aucune donnée enregistrée pour ce patient.');
+      expect(res.timeline).toEqual([]);
+      expect(res.activeAlerts).toEqual([]);
+      expect(res.quickActions).toEqual([]);
+      expect(mockScribeGuardian.checkSafety).not.toHaveBeenCalled();
     });
   });
 });

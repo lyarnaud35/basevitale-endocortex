@@ -11,21 +11,25 @@ const nextConfig = {
     svgr: false,
   },
   // Transpiler les packages locaux (libs partagées)
-  transpilePackages: ['@basevitale/shared'],
+  transpilePackages: ['@basevitale/shared', '@basevitale/scribe-ui'],
   // Configuration webpack pour résoudre les modules Nx (client ET serveur)
   webpack: (config, { isServer }) => {
     const path = require('path');
     config.resolve.alias = {
       ...config.resolve.alias,
       '@basevitale/shared': path.resolve(__dirname, '../../libs/shared/src/index.ts'),
+      '@basevitale/scribe-ui': path.resolve(__dirname, '../../libs/scribe-ui/src/index.ts'),
     };
     return config;
   },
-  // Configuration pour le développement
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+  // Proxy /api vers l'API NestJS (port 3001). Le front appelle /api en relatif → même origine, pas de CORS.
+  async rewrites() {
+    const target = process.env.API_BACKEND_URL || 'http://localhost:3001';
+    return [{ source: '/api/:path*', destination: `${target}/api/:path*` }];
   },
-  // Améliorer les performances
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
+  },
   poweredByHeader: false,
   compress: true,
 };

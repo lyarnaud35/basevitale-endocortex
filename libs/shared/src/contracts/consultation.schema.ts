@@ -49,6 +49,33 @@ export const ConsultationSchema = z.object({
     )
     .default([])
     .describe('Liste des médicaments prescrits'),
+  /** Actes facturables (CCAM/NGAP) – mentionnés ou déduits de la consultation. */
+  billingCodes: z
+    .array(
+      z.object({
+        code: z.string().min(1, 'Le code acte est requis'),
+        label: z.string().min(1, 'Le libellé est requis'),
+        confidence: z
+          .number()
+          .min(0, 'Confiance entre 0 et 1')
+          .max(1, 'Confiance entre 0 et 1'),
+      }),
+    )
+    .default([])
+    .describe('Codes actes facturables (CCAM/NGAP)'),
+  /** Ordonnance médicamenteuse structurée (drug, dosage, duration). */
+  prescription: z
+    .array(
+      z.object({
+        drug: z.string().min(1, 'Le médicament est requis'),
+        dosage: z.string().min(1, 'Le dosage est requis'),
+        duration: z.string().min(1, 'La durée est requise'),
+      }),
+    )
+    .default([])
+    .describe('Ordonnance : médicaments prescrits (drug, dosage, duration)'),
+  /** Alertes sécurité (Mini-Vidal / C+ Gardien) : contre-indications non bloquantes. */
+  alerts: z.array(z.string()).optional().describe('Alertes de vérification médicamenteuse'),
 });
 
 /**

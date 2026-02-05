@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "baseUrl": "../..",
     "jsx": "preserve",
     "allowJs": true,
     "esModuleInterop": true,
@@ -20,8 +21,10 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@basevitale/shared": ["../../libs/shared/src/index.ts"],
-      "@basevitale/shared/*": ["../../libs/shared/src/*"]
+      "@basevitale/shared": ["libs/shared/src/index.ts"],
+      "@basevitale/shared/*": ["libs/shared/src/*"],
+      "@basevitale/scribe-ui": ["libs/scribe-ui/src/index.ts"],
+      "@basevitale/scribe-ui/*": ["libs/scribe-ui/src/*"]
     }
   },
   "include": [

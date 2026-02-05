@@ -112,4 +112,22 @@ const highConfidenceCodes = codes.suggestions.filter(
 
 ---
 
+## 🧠 Brain Loader (IA locale / Ollama)
+
+En mode **LOCAL** (kit Souverain), Ollama doit avoir un modèle téléchargé. Utiliser le script **Brain Loader** :
+
+```bash
+./scripts/init-ai.sh
+```
+
+Le script :
+1. Lance le conteneur `ollama` (`docker-compose.prod.yml`).
+2. Attend qu’Ollama réponde.
+3. Exécute `ollama pull mistral` (ou le modèle défini par `OLLAMA_MODEL` / argument).
+4. Affiche **« Cerveau chargé avec succès »**.
+
+Modèle personnalisé : `./scripts/init-ai.sh llama3`. Voir `docs/INTEGRATION.md` (section B) et `docs/KIT_LIVRAISON_SOUVERAIN.md`.
+
+---
+
 *Guide d'Intégration - Patterns et exemples*
