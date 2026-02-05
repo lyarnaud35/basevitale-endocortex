@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bull';
 import { KnowledgeGraphModule } from '../knowledge-graph/knowledge-graph.module';
+import { MedicalModule } from '../medical/medical.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { GpuLockModule } from '../common/services/gpu-lock.module';
 
@@ -9,8 +10,14 @@ import { ScribeService } from './scribe.service';
 import { ScribeController } from './scribe.controller';
 import { ScribeHealthService } from './scribe.health.service';
 import { ScribeProcessor } from './scribe.processor';
+import { ScribeGuardianService } from './guardian.service';
+import { ScribeGraphProjectorService } from './graph-projector.service';
+import { GraphReaderService } from './graph-reader.service';
 import { MetricsService } from '../common/services/metrics.service';
 import { CommonModule } from '../common/common.module';
+import { ScribeMachineService } from './scribe-machine.service';
+import { ScribeGhostService } from './scribe-ghost.service';
+import { CoreGhostModule } from '../core-ghost/core-ghost.module';
 
 @Module({
   imports: [
@@ -19,7 +26,9 @@ import { CommonModule } from '../common/common.module';
       maxRedirects: 5,
     }),
     CommonModule, // Pour ConfigService
+    CoreGhostModule, // Pour GhostMachineService (ScribeGhostService)
     KnowledgeGraphModule,
+    MedicalModule,
     PrismaModule,
     GpuLockModule,
     // Queue pour traitement asynchrone (Phase C)
@@ -42,7 +51,17 @@ import { CommonModule } from '../common/common.module';
     }),
   ],
   controllers: [ScribeController],
-  providers: [ScribeService, ScribeHealthService, ScribeProcessor, MetricsService],
-  exports: [ScribeService, ScribeHealthService],
+  providers: [
+    ScribeService,
+    ScribeHealthService,
+    ScribeProcessor,
+    ScribeGuardianService,
+    ScribeGraphProjectorService,
+    GraphReaderService,
+    MetricsService,
+    ScribeMachineService,
+    ScribeGhostService,
+  ],
+  exports: [ScribeService, ScribeHealthService, ScribeGhostService],
 })
 export class ScribeModule {}

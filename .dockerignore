@@ -1,0 +1,13 @@
+# Used when building API (docker build -f apps/api/Dockerfile .)
+node_modules
+dist
+.git
+.next
+coverage
+*.log
+.env
+.env.*
+!.env.example
+apps/web
+.cursor
+.idea

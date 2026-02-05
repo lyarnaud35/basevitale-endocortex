@@ -1,0 +1,176 @@
+# BaseVitale – Kit de Livraison Souverain (v121)
+# Usage: docker compose -f docker-compose.prod.yml up -d
+# Mode LOCAL par défaut : Ollama dans le compose, ai-cortex → ollama.
+# Variables : .env ou env.prod.example (AI_MODE=LOCAL, OLLAMA_BASE_URL, etc.)
+# Services principaux : api, ai-cortex, postgres, neo4j, redis, ollama (+ nats pour boot API).
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: basevitale-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-basevitale}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - basevitale-network
+
+  neo4j:
+    image: neo4j:latest
+    container_name: basevitale-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4j}
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - basevitale-network
+
+  redis:
+    image: redis:latest
+    container_name: basevitale-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - basevitale-network
+
+  nats:
+    image: nats:alpine
+    container_name: basevitale-nats
+    restart: unless-stopped
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - basevitale-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: basevitale-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - basevitale-network
+    # CPU par défaut. GPU NVIDIA : décommenter ci‑dessous.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  ai-cortex:
+    build:
+      context: ./apps/ai-cortex
+      dockerfile: Dockerfile
+    image: basevitale-ai-cortex
+    container_name: basevitale-ai-cortex
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      HOST: 0.0.0.0
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-mistral}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    networks:
+      - basevitale-network
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: basevitale-api
+    container_name: basevitale-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-basevitale}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4j}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      NATS_SERVERS: nats://nats:4222
+      AI_MODE: ${AI_MODE:-LOCAL}
+      AI_CORTEX_URL: http://ai-cortex:8000
+      AI_SERVICE_URL: http://ai-cortex:8000
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    networks:
+      - basevitale-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      ai-cortex:
+        condition: service_healthy
+
+networks:
+  basevitale-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  redis_data:
+  ollama_data:

@@ -534,7 +534,8 @@ const config = {
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
-    "rootEnvPath": "../../../../../.env"
+    "rootEnvPath": "../../../../../.env",
+    "schemaEnvPath": "../../../../../.env"
   },
   "relativePath": "../../../prisma",
   "clientVersion": "5.7.0",
@@ -560,8 +561,8 @@ const fs = require('fs')
 config.dirname = __dirname
 if (!fs.existsSync(path.join(__dirname, 'schema.prisma'))) {
   const alternativePaths = [
-    "src/prisma/client",
-    "prisma/client",
+    "apps/api/src/prisma/client",
+    "api/src/prisma/client",
   ]
   
   const alternativePath = alternativePaths.find((altPath) => {
@@ -590,7 +591,7 @@ Object.assign(exports, Prisma)
 
 // file annotations for bundling tools to include these files
 path.join(__dirname, "libquery_engine-darwin.dylib.node");
-path.join(process.cwd(), "src/prisma/client/libquery_engine-darwin.dylib.node")
+path.join(process.cwd(), "apps/api/src/prisma/client/libquery_engine-darwin.dylib.node")
 // file annotations for bundling tools to include these files
 path.join(__dirname, "schema.prisma");
-path.join(process.cwd(), "src/prisma/client/schema.prisma")
+path.join(process.cwd(), "apps/api/src/prisma/client/schema.prisma")

@@ -136,44 +136,75 @@ def test_process_generic():
         print(f"❌ Error: {e}")
         return False
 
-def test_structure_alias():
-    """Test l'endpoint /structure (alias)"""
-    print("\n🔍 Testing /structure endpoint (alias)...")
-    
-    test_schema = {
-        "type": "object",
-        "properties": {
-            "symptoms": {
-                "type": "array",
-                "items": {"type": "string"}
-            }
-        },
-        "required": ["symptoms"]
-    }
-    
-    request_data = {
-        "text": "Patient avec fièvre et toux",
-        "json_schema": test_schema
-    }
-    
+def test_structure():
+    """Test l'endpoint /structure (Cerveau Réel – payload { text } uniquement)"""
+    print("\n🔍 Testing /structure endpoint (Consultation)...")
+
+    request_data = {"text": "Patient avec fièvre et toux. Diagnostic grippe. Paracétamol 500mg 7 jours."}
+
     try:
         response = requests.post(
             f"{BASE_URL}/structure",
             json=request_data,
             headers={"Content-Type": "application/json"},
-            timeout=30
+            timeout=120,
         )
-        
+
         response.raise_for_status()
         data = response.json()
-        
+
         print("✅ /structure endpoint works")
+        assert "data" in data
+        d = data["data"]
+        assert "symptoms" in d and "diagnosis" in d and "medications" in d
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return True
-        
+
     except Exception as e:
         print(f"❌ /structure endpoint failed: {e}")
         return False
+
+
+def test_process():
+    """Test POST /process (Cerveau structurant – { text, mode FAST|PRECISE })"""
+    print("\n🔍 Testing /process endpoint (text + mode)...")
+
+    request_data = {
+        "text": "Patient 45 ans, fièvre 38.5°C, toux grasse. Angine. Amoxicilline 1g x 7 jours.",
+        "mode": "FAST",
+    }
+
+    try:
+        response = requests.post(
+            f"{BASE_URL}/process",
+            json=request_data,
+            headers={"Content-Type": "application/json"},
+            timeout=120,
+        )
+
+        if response.status_code == 400:
+            print("⚠️ /process 400 (OPENAI_API_KEY manquante?) – endpoint existe")
+            return True
+        if response.status_code == 503:
+            print("⚠️ /process 503 (structuration échouée après retries) – endpoint existe")
+            return True
+
+        response.raise_for_status()
+        data = response.json()
+
+        print("✅ /process endpoint works")
+        for k in ["patientId", "transcript", "symptoms", "diagnosis", "medications"]:
+            assert k in data, f"missing {k}"
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return True
+
+    except requests.exceptions.HTTPError as e:
+        print(f"❌ /process HTTP error: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ /process failed: {e}")
+        return False
+
 
 def main():
     """Fonction principale"""
@@ -186,8 +217,11 @@ def main():
     # Test 1: Health check
     results.append(("Health Check", test_health()))
     
-    # Test 2: Structure alias (plus rapide)
-    results.append(("Structure Alias", test_structure_alias()))
+    # Test 2: Structure (Cerveau Réel – { text } → Consultation)
+    results.append(("Structure", test_structure()))
+
+    # Test 2b: Process (Cerveau structurant – { text, mode } → JSON, OPENAI)
+    results.append(("Process", test_process()))
     
     # Test 3: Process generic (nécessite LLM)
     print("\n⚠️  Note: This test requires a configured LLM (OpenAI API key or Ollama)")

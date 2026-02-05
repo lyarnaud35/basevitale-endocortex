@@ -17,12 +17,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from openai import OpenAI
 from pydantic import BaseModel, Field, create_model
+
+from services.llm_processor import structure_text
 
 # Import instructor avec fallback pour les deux versions
 try:
@@ -108,6 +110,31 @@ class ProcessGenericRequest(BaseModel):
 class ProcessGenericResponse(BaseModel):
     """Réponse structurée selon le schéma fourni"""
     data: Dict[str, Any] = Field(..., description="Données structurées selon schema")
+
+
+# -----------------------------------------------------------------------------
+# Schéma Consultation (miroir Zod ConsultationSchema) – Law I: Contract-First
+# Utilisé par POST /structure pour extraire entités médicales.
+# -----------------------------------------------------------------------------
+class DiagnosisStructure(BaseModel):
+    code: str = Field(..., description="Code diagnostic (ex. CIM-10)")
+    label: str = Field(..., description="Libellé du diagnostic")
+    confidence: float = Field(0.5, ge=0, le=1, description="Score de confiance 0–1")
+
+
+class MedicationStructure(BaseModel):
+    name: str = Field(..., description="Nom du médicament")
+    dosage: str = Field(..., description="Dosage (ex. 500mg, 10ml)")
+    duration: str = Field(..., description="Durée (ex. 7 jours, 2 semaines)")
+
+
+class ConsultationStructure(BaseModel):
+    """Structure Consultation – équivalent Pydantic du ConsultationSchema Zod"""
+    patientId: str = Field(..., description="Identifiant du patient")
+    transcript: str = Field(..., description="Transcription brute de la consultation")
+    symptoms: List[str] = Field(..., min_length=1, description="Symptômes rapportés")
+    diagnosis: List[DiagnosisStructure] = Field(..., min_length=1, description="Diagnostics")
+    medications: List[MedicationStructure] = Field(default_factory=list, description="Médicaments prescrits")
 
 
 def get_openai_client(
@@ -404,6 +431,12 @@ async def process_generic(request: ProcessGenericRequest) -> ProcessGenericRespo
     else:
         structured_data = dict(response) if hasattr(response, "__dict__") else {}
 
+    # Normaliser billingCodes / prescription (ConsultationSchema) pour compatibilité Zod
+    if not isinstance(structured_data.get("billingCodes"), list):
+        structured_data["billingCodes"] = []
+    if not isinstance(structured_data.get("prescription"), list):
+        structured_data["prescription"] = []
+
     return ProcessGenericResponse(data=structured_data)
 
 
@@ -438,46 +471,120 @@ def _handle_llm_error(exc: Exception, provider: str, model: str) -> None:
     ) from exc
 
 
-# Alias pour compatibilité avec le backend existant
+# -----------------------------------------------------------------------------
+# POST /structure – Cerveau Réel (Operation Synapse)
+# Accepte { text } uniquement. Utilise ConsultationStructure + instructor.
+# -----------------------------------------------------------------------------
 class StructureRequest(BaseModel):
-    """Requête pour la structuration (alias pour compatibilité)"""
-    text: str = Field(..., description="Texte à analyser")
-    json_schema: Dict[str, Any] = Field(..., description="Schéma JSON (dérivé de Zod)")
+    """Requête pour la structuration – payload minimal { text }"""
+    text: str = Field(..., description="Texte à analyser (dictée, transcription)")
 
 
 class StructureResponse(BaseModel):
-    """Réponse structurée (alias pour compatibilité)"""
-    data: Dict[str, Any] = Field(..., description="Données structurées")
+    """Réponse structurée conforme ConsultationSchema"""
+    data: Dict[str, Any] = Field(..., description="Consultation structurée (patientId, symptoms, diagnosis, medications)")
+
+
+STRUCTURE_SYSTEM_PROMPT = (
+    "Tu es un assistant médical expert. Analyse le texte fourni (transcription ou dictée de consultation) "
+    "et extrais les entités structurées : patientId (génère un id court si absent, ex. pat-001), "
+    "transcript (le texte brut), symptoms (liste de chaînes), diagnosis (code, label, confidence 0–1), "
+    "medications (name, dosage, duration). Réponds UNIQUEMENT par un JSON valide selon le schéma attendu, "
+    "sans markdown ni texte explicatif."
+)
 
 
 @app.post("/structure", response_model=StructureResponse)
 async def structure(request: StructureRequest) -> StructureResponse:
     """
-    Alias pour /process-generic - Compatibilité avec le backend existant.
-    
-    Convertit la requête vers le format /process-generic et délègue.
+    Cerveau Réel – Structuration consultation via LLM (Ollama/OpenAI).
+
+    - Input: { "text": str }
+    - Utilise instructor + ConsultationStructure (miroir Zod)
+    - Output: { "data": { patientId, transcript, symptoms, diagnosis, medications } }
+    """
+    provider = os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER)
+    model = OLLAMA_MODEL if provider == "ollama" else (os.getenv("LLM_MODEL") or DEFAULT_LLM_MODEL)
+    base_url = OLLAMA_BASE_URL if provider == "ollama" else None
+
+    try:
+        client = get_openai_client(
+            provider=provider,
+            base_url=base_url,
+            api_key=os.getenv("OPENAI_API_KEY") if provider == "openai" else None,
+        )
+    except ValueError as e:
+        logger.warning("[/structure] Config error: %s", e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    patched = _patched_client(client, provider=provider)
+    user_message = (
+        f"Analyse ce texte de consultation et extrais les entités structurées.\n\nTexte:\n{request.text}"
+    )
+
+    try:
+        create_params = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": STRUCTURE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            "response_model": ConsultationStructure,
+            "temperature": 0.3,
+        }
+        if provider == "ollama":
+            create_params["response_format"] = {"type": "json_object"}
+
+        response = patched.chat.completions.create(**create_params)
+    except Exception as e:  # noqa: BLE001
+        _handle_llm_error(e, provider, model)
+
+    if hasattr(response, "model_dump"):
+        structured_data = response.model_dump()
+    elif hasattr(response, "dict"):
+        structured_data = response.dict()
+    else:
+        structured_data = dict(response) if hasattr(response, "__dict__") else {}
+
+    logger.info("[/structure] Consultation structurée (symptoms=%d, diagnosis=%d)",
+                len(structured_data.get("symptoms", [])), len(structured_data.get("diagnosis", [])))
+    return StructureResponse(data=structured_data)
+
+
+# -----------------------------------------------------------------------------
+# POST /process – Cerveau structurant (OpenAI + instructor, retries)
+# Input: { "text": str, "mode": "FAST" | "PRECISE" }. Output: JSON structuré (ConsultationModel).
+# -----------------------------------------------------------------------------
+class ProcessRequest(BaseModel):
+    """Requête pour POST /process."""
+    text: str = Field(..., min_length=1, description="Texte à structurer")
+    mode: Literal["FAST", "PRECISE"] = Field(
+        default="FAST",
+        description="FAST = rapidité, PRECISE = focus CIM-10 et précision",
+    )
+
+
+@app.post("/process")
+def process(request: ProcessRequest):
+    """
+    Cerveau structurant — extraction d'entités cliniques via OpenAI + instructor.
+
+    - Input: { "text": str, "mode": "FAST" | "PRECISE" }
+    - Output: JSON structuré (patientId, transcript, symptoms, diagnosis, medications).
+    - OPENAI_API_KEY requis (.env). Instructor gère les retries sur JSON malformé.
     """
     try:
-        # Convertir en format ProcessGenericRequest
-        generic_request = ProcessGenericRequest(
-            text=request.text,
-            schema=request.json_schema,
-        )
-        
-        # Appeler process_generic
-        response = await process_generic(generic_request)
-        
-        # Retourner dans le format attendu
-        return StructureResponse(data=response.data)
-        
-    except HTTPException:
-        # Propager les HTTPException
-        raise
-    except Exception as e:
+        consultation = structure_text(request.text, mode=request.mode)
+        return consultation.model_dump()
+    except ValueError as e:
+        logger.warning("[/process] Config: %s", e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("[/process] Structuration failed: %s", e)
         raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors de la structuration: {str(e)}"
-        )
+            status_code=503,
+            detail="Structuration impossible après plusieurs tentatives. Vérifiez OPENAI_API_KEY.",
+        ) from e
 
 
 @app.get("/health")
@@ -493,8 +600,9 @@ async def health():
             "ollama_model": OLLAMA_MODEL,
         },
         "endpoints": {
+            "process": "/process (text, mode FAST|PRECISE)",
             "process-generic": "/process-generic",
-            "structure": "/structure (alias)",
+            "structure": "/structure (Consultation)",
             "health": "/health",
         },
     }

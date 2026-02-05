@@ -4,7 +4,8 @@
  */
 
 import { Logger, ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app/app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -25,18 +26,19 @@ async function bootstrap() {
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
 
-  // Enable CORS (configurable via env)
+  // CORS : origines autorisées via ALLOWED_ORIGINS (liste séparée par des virgules)
+  const allowedOrigins = configService.allowedOrigins;
   app.enableCors({
-    origin: configService.corsOrigin,
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
     credentials: true,
   });
 
-  // Global validation pipe (utilise class-validator par défaut)
+  // Global validation pipe (whitelist + rejet des champs non déclarés = anti-injection)
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // Supprime les propriétés non définies dans les DTOs
-      forbidNonWhitelisted: false, // Ne bloque pas, juste supprime
-      transform: true, // Transforme automatiquement les types
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
       transformOptions: {
         enableImplicitConversion: true,
       },
@@ -44,9 +46,10 @@ async function bootstrap() {
   );
 
   // Global interceptors (ordre important)
+  const reflector = app.get(Reflector);
   app.useGlobalInterceptors(
     new LoggingInterceptor(),
-    new TransformInterceptor(),
+    new TransformInterceptor(reflector),
   );
 
   // Global exception filters (ordre important : spécifique → général)
@@ -56,11 +59,37 @@ async function bootstrap() {
     new GlobalExceptionFilter(),
   );
 
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Endocortex API')
+    .setDescription(
+      'Symbiote – Intelligence Engine (Scribe, Billing, Coding, Security). Livrable Golden Master pour Ben. ' +
+        'Authentification : header X-INTERNAL-API-KEY (clé partagée avec le backend partenaire). ' +
+        'L’API doit être démarrée pour que « Try it out » fonctionne (pas de ERR_CONNECTION_REFUSED).',
+    )
+    .setVersion('v115.0')
+    .setBasePath(globalPrefix)
+    .addServer('/', 'Serveur courant (même origine que cette page)')
+    .addApiKey(
+      { type: 'apiKey', in: 'header', name: 'X-INTERNAL-API-KEY', description: 'Clé API interne (backend-to-backend)' },
+      'X-INTERNAL-API-KEY',
+    )
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  document.security = [{ 'X-INTERNAL-API-KEY': [] }];
+  // Montage explicite sur /api/docs ; options pour éviter le warning deep link (espaces → _) et les requêtes favicon
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      deepLinking: false, // évite le warning "escaping deep link whitespace with _"
+      persistAuthorization: true,
+    },
+  });
+
   const port = configService.port;
-  await app.listen(port);
-  
-  logger.log(`🚀 BaseVitale API is running on: http://localhost:${port}/${globalPrefix}`);
-  logger.log(`📚 API Documentation available at: http://localhost:${port}/${globalPrefix}`);
+  // Listen on all interfaces so Docker can map the port (not only localhost)
+  await app.listen(port, '0.0.0.0');
+
+  logger.log(`🚀 BaseVitale API is running on: http://0.0.0.0:${port}/${globalPrefix}`);
+  logger.log(`📚 Swagger UI: http://0.0.0.0:${port}/${globalPrefix}/docs`);
   logger.log(`🔧 Environment: ${configService.nodeEnv}`);
   logger.log(`🤖 AI Mode: ${configService.aiMode}`);
   logger.log(`📊 Modules: C+ ✅ | S ✅ | E+ ✅ | B+ ✅ | L 🟡`);

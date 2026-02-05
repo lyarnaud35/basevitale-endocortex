@@ -4,8 +4,10 @@ import {
   ExecutionContext,
   CallHandler,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { SKIP_TRANSFORM_KEY } from '../decorators/skip-transform.decorator';
 
 /**
  * Format standardisé pour les réponses API
@@ -19,23 +21,24 @@ export interface ApiResponse<T> {
 
 /**
  * TransformInterceptor
- * 
- * Transforme toutes les réponses en format standardisé
- * 
- * Utilisation:
- * - Appliquer globalement dans main.ts
- * - Ou sur des routes spécifiques avec @UseInterceptors(TransformInterceptor)
+ *
+ * Transforme toutes les réponses en format standardisé.
+ * Les routes marquées @SkipTransform() (ex. SSE) ne sont pas enveloppées.
  */
 @Injectable()
-export class TransformInterceptor<T>
-  implements NestInterceptor<T, ApiResponse<T>>
-{
-  intercept(
-    context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<ApiResponse<T>> {
+export class TransformInterceptor implements NestInterceptor {
+  constructor(private readonly reflector: Reflector) {}
+
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const skip = this.reflector.getAllAndOverride<boolean>(SKIP_TRANSFORM_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (skip) {
+      return next.handle();
+    }
     return next.handle().pipe(
-      map((data) => ({
+      map((data: unknown) => ({
         success: true,
         data,
         timestamp: new Date().toISOString(),

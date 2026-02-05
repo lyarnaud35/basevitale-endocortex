@@ -14,11 +14,6 @@ export async function measureExecutionTime<T>(
   const start = performance.now();
   const result = await fn();
   const duration = performance.now() - start;
-
-  if (label) {
-    console.log(`[Performance] ${label}: ${duration.toFixed(2)}ms`);
-  }
-
   return { result, duration };
 }
 

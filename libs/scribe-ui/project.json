@@ -1,0 +1,22 @@
+{
+  "name": "scribe-ui",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/scribe-ui/src",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:scribe"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/scribe-ui",
+        "main": "libs/scribe-ui/src/index.ts",
+        "tsConfig": "libs/scribe-ui/tsconfig.build.json",
+        "assets": ["libs/scribe-ui/*.md", "libs/scribe-ui/package.json"]
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

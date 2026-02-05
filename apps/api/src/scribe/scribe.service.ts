@@ -6,6 +6,8 @@ import {
   ServiceUnavailableException,
   NotFoundException,
   BadRequestException,
+  InternalServerErrorException,
+  HttpException,
 } from '@nestjs/common';
 import { MetricsService } from '../common/services/metrics.service';
 import { CacheService } from '../common/services/cache.service';
@@ -27,8 +29,16 @@ import {
   KnowledgeGraphSchema,
   KnowledgeGraph,
   CreateSemanticNode,
+  IntelligenceResponseSchema,
+  type IntelligenceResponse,
 } from '@basevitale/shared';
 import { GraphProjectorService } from '../knowledge-graph/graph-projector.service';
+import { GuardianService } from '../knowledge-graph/guardian.service';
+import { Neo4jService } from '../neo4j/neo4j.service';
+import { ScribeGuardianService } from './guardian.service';
+import { ScribeGraphProjectorService } from './graph-projector.service';
+import { GraphReaderService } from './graph-reader.service';
+import { SecurityService } from '../medical/security.service';
 
 /**
  * ScribeService - Module S (Scribe) Phase 1
@@ -60,6 +70,12 @@ export class ScribeService {
     private readonly prisma: PrismaService,
     private readonly gpuLock: GpuLockService,
     private readonly graphProjector: GraphProjectorService,
+    private readonly guardian: GuardianService,
+    private readonly neo4j: Neo4jService,
+    private readonly scribeGuardian: ScribeGuardianService,
+    private readonly scribeGraphProjector: ScribeGraphProjectorService,
+    private readonly graphReader: GraphReaderService,
+    private readonly securityService: SecurityService,
     @Optional() private readonly cacheService?: CacheService,
     @Optional() @InjectQueue('scribe-consultation') private scribeQueue?: Queue,
   ) {
@@ -81,31 +97,43 @@ export class ScribeService {
     }
 
     // Initialiser client cloud (OpenAI-compatible) si mode CLOUD — Groq ou OpenAI
+    // Ne jamais utiliser 'dummy' ni clé placeholder : sans clé valide → pas de client, fallback MOCK.
     if (this.aiMode === 'CLOUD') {
       const provider = this.configService.cloudProvider;
       const apiKey = this.configService.cloudApiKey;
-      if (!apiKey) {
+      const valid = this.isValidCloudApiKey(apiKey);
+      if (!valid) {
         this.logger.warn(
-          `${provider === 'groq' ? 'GROQ_API_KEY' : 'OPENAI_API_KEY'} not found, CLOUD mode may fail`,
+          `${provider === 'groq' ? 'GROQ_API_KEY' : 'OPENAI_API_KEY'} absente ou invalide → appels CLOUD ignorés, fallback MOCK`,
         );
+        this.openaiClient = null;
+      } else {
+        this.openaiClient = new OpenAI({
+          apiKey: apiKey!,
+          baseURL: this.configService.cloudBaseUrl,
+        });
+        this.logger.log(`CLOUD provider: ${provider}, model: ${this.configService.cloudModel}`);
       }
-      this.openaiClient = new OpenAI({
-        apiKey: apiKey || 'dummy',
-        baseURL: this.configService.cloudBaseUrl,
-      });
-      this.logger.log(`CLOUD provider: ${provider}, model: ${this.configService.cloudModel}`);
     } else {
       this.openaiClient = null;
     }
   }
 
+  private isValidCloudApiKey(key: string | undefined): boolean {
+    if (!key || typeof key !== 'string') return false;
+    const k = key.trim();
+    if (!k) return false;
+    if (k === 'dummy' || k.toLowerCase() === 'dummy') return false;
+    if (/sk-votre-cle|sk-your-key|gsk-votre|gsk-your|placeholder|example\.com/i.test(k)) return false;
+    return true;
+  }
+
   /**
-   * PHASE "TRACER BULLET" : Méthode analyze simplifiée
+   * PHASE "TRACER BULLET" / Operation Synapse / Pont Synaptique
    *
    * - MOCK : données factices → ConsultationDraft + projection Neo4j
-   * - LOCAL : POST Python /process-generic { text, schema } → {"data": ...} → parser → DB + Neo4j.
-   *   Si Python injoignable : fallback Mock (⚠️ Neuro-Cortex Unreachable).
-   * - CLOUD : Groq ou OpenAI (JSON mode) → même flux DB + Neo4j. Réponse typiquement < 2s.
+   * - CLOUD | LOCAL : POST Python ai-cortex /process { text, mode } → Zod → DB + Neo4j.
+   *   Si Python timeout / crash / JSON invalide : 503 "Service IA indisponible" (pas de fallback mock).
    */
   async analyze(text: string): Promise<Consultation> {
     const startTime = Date.now();
@@ -119,27 +147,35 @@ export class ScribeService {
       return this.runMockFallback(text, startTime);
     }
 
-    if (aiMode === 'CLOUD') {
-      return this.runCloudAnalyze(text, startTime);
+    if (aiMode === 'CLOUD' || aiMode === 'LOCAL') {
+      return this.runPythonSidecarAnalyze(text, startTime, aiMode);
     }
 
-    if (aiMode !== 'LOCAL') {
-      this.logger.debug(`[analyze] AI_MODE=${aiMode} → fallback MOCK`);
-      return this.runMockFallback(text, startTime);
-    }
+    this.logger.debug(`[analyze] AI_MODE=${aiMode} → fallback MOCK`);
+    return this.runMockFallback(text, startTime);
+  }
 
-    // AI_MODE === 'LOCAL' → appel HTTP sidecar Python (ai-cortex) /process-generic
+  /**
+   * Pont Synaptique : appel HTTP au sidecar Python (ai-cortex) POST /process.
+   * Utilisé pour AI_MODE CLOUD et LOCAL. Pas de fallback mock en cas d'erreur.
+   */
+  private async runPythonSidecarAnalyze(
+    text: string,
+    startTime: number,
+    aiMode: 'CLOUD' | 'LOCAL',
+    externalPatientId?: string,
+  ): Promise<Consultation & { draftId?: string; alerts?: string[] }> {
     const aiServiceUrl = this.configService.aiServiceUrl;
-    const endpoint = `${aiServiceUrl}/process-generic`;
-    const timeoutMs = this.configService.aiCortexTimeoutMs; // 300s défaut (inférence CPU)
-    const schema = zodToJsonSchema(ConsultationSchema);
-    this.logger.debug(`[analyze] POST ${endpoint} (timeout ${timeoutMs}ms)`);
+    const endpoint = `${aiServiceUrl}/process`;
+    const timeoutMs = this.configService.aiCortexTimeoutMs;
+    const mode = aiMode === 'CLOUD' ? 'FAST' : 'PRECISE';
+    this.logger.debug(`[analyze] POST ${endpoint} (mode=${mode}, timeout ${timeoutMs}ms)`);
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post<{ data?: unknown }>(
+        this.httpService.post<Consultation>(
           endpoint,
-          { text, schema },
+          { text, mode },
           {
             headers: { 'Content-Type': 'application/json' },
             timeout: timeoutMs,
@@ -147,43 +183,65 @@ export class ScribeService {
         ),
       );
 
-      // Python renvoie {"data": <JSON structuré>}. Axios met le body dans response.data.
-      const raw = response.data?.data ?? response.data;
+      const raw = response.data;
       if (!raw || typeof raw !== 'object') {
-        throw new Error('No structured data in response from Python sidecar');
+        throw new Error('Réponse invalide du sidecar Python (aucune donnée structurée)');
       }
 
-      const validatedConsultation = ConsultationSchema.parse(raw) as Consultation;
+      let validatedConsultation = ConsultationSchema.parse(raw) as Consultation;
+      const patientId = externalPatientId?.trim() || validatedConsultation.patientId;
+      validatedConsultation = { ...validatedConsultation, patientId };
+
       let draftId: string | null = null;
+
+      const guardAlerts = (
+        await this.scribeGuardian.checkSafety(patientId, validatedConsultation)
+      ).alerts;
+      const securityAlerts = await this.collectSecurityAlerts(
+        patientId,
+        validatedConsultation.medications ?? [],
+      );
+      const alerts = [...guardAlerts, ...securityAlerts];
+      const toSave = alerts.length
+        ? { ...validatedConsultation, alerts }
+        : (validatedConsultation as object);
 
       try {
         const draft = await this.prisma.consultationDraft.create({
           data: {
-            patientId: validatedConsultation.patientId,
+            patientId,
             status: 'DRAFT',
-            structuredData: validatedConsultation as object,
+            structuredData: toSave,
           },
         });
         draftId = draft.id;
         this.logger.log(`[analyze] ConsultationDraft sauvegardé: ${draft.id}`);
-        this.metricsService.incrementCounter('scribe.analyze.local.saved');
-        this.metricsService.recordTiming('scribe.analyze.local.duration', Date.now() - startTime);
-        await this.graphProjector.projectConsultation(
-          validatedConsultation.patientId,
-          validatedConsultation,
+        this.metricsService.incrementCounter(`scribe.analyze.${aiMode.toLowerCase()}.saved`);
+        this.metricsService.recordTiming(
+          `scribe.analyze.${aiMode.toLowerCase()}.duration`,
+          Date.now() - startTime,
         );
-        this.logger.log(`✅ Graph Projection Complete for patient ${validatedConsultation.patientId}`);
+        await this.graphProjector.projectConsultation(patientId, validatedConsultation);
+        this.logger.log(`✅ Graph Projection Complete for patient ${patientId}`);
       } catch (e) {
         this.logger.error('[analyze] Erreur sauvegarde ConsultationDraft', e);
-        this.metricsService.incrementCounter('scribe.analyze.local.save_error');
+        this.metricsService.incrementCounter(`scribe.analyze.${aiMode.toLowerCase()}.save_error`);
       }
 
-      this.metricsService.incrementCounter('scribe.analyze.local.success');
-      return { ...validatedConsultation, draftId } as Consultation & { draftId?: string };
+      this.metricsService.incrementCounter(`scribe.analyze.${aiMode.toLowerCase()}.success`);
+      return {
+        ...validatedConsultation,
+        ...(alerts.length ? { alerts } : {}),
+        draftId,
+      } as Consultation & { draftId?: string; alerts?: string[] };
     } catch (err) {
-      this.logger.warn('⚠️ Neuro-Cortex Unreachable', err instanceof Error ? err.message : String(err));
-      this.metricsService.incrementCounter('scribe.analyze.local.error');
-      return this.runMockFallback(text, startTime);
+      if (err instanceof HttpException) throw err;
+      this.logger.warn(
+        '[analyze] Service IA indisponible (timeout / crash / JSON invalide)',
+        err instanceof Error ? err.message : String(err),
+      );
+      this.metricsService.incrementCounter(`scribe.analyze.${aiMode.toLowerCase()}.error`);
+      throw new ServiceUnavailableException('Service IA indisponible.');
     }
   }
 
@@ -197,12 +255,28 @@ export class ScribeService {
     const validatedConsultation = await this.analyzeConsultationCloud(text);
     let draftId: string | null = null;
 
+    // C+ Gardien (checkSafety) : alertes non bloquantes depuis Neo4j (:Condition)
+    const guardAlerts = (
+      await this.scribeGuardian.checkSafety(
+        validatedConsultation.patientId,
+        validatedConsultation,
+      )
+    ).alerts;
+    const securityAlerts = await this.collectSecurityAlerts(
+      validatedConsultation.patientId,
+      validatedConsultation.medications ?? [],
+    );
+    const alerts = [...guardAlerts, ...securityAlerts];
+    const toSave = alerts.length
+      ? { ...validatedConsultation, alerts }
+      : (validatedConsultation as object);
+
     try {
       const draft = await this.prisma.consultationDraft.create({
         data: {
           patientId: validatedConsultation.patientId,
           status: 'DRAFT',
-          structuredData: validatedConsultation as object,
+          structuredData: toSave,
         },
       });
       draftId = draft.id;
@@ -220,16 +294,39 @@ export class ScribeService {
     }
 
     this.metricsService.incrementCounter('scribe.analyze.cloud.success');
-    return { ...validatedConsultation, draftId } as Consultation & { draftId?: string };
+    return {
+      ...validatedConsultation,
+      ...(alerts.length ? { alerts } : {}),
+      draftId,
+    } as Consultation & { draftId?: string; alerts?: string[] };
+  }
+
+  /**
+   * Mini-Vidal (SecurityService) : pour chaque médicament, validatePrescription.
+   * Retourne les raisons des vérifications non autorisées (alertes non bloquantes).
+   */
+  private async collectSecurityAlerts(
+    patientId: string,
+    medications: Array<{ name?: string; dosage?: string; duration?: string }>,
+  ): Promise<string[]> {
+    const alerts: string[] = [];
+    for (const med of medications ?? []) {
+      const name = (med.name ?? '').trim();
+      if (!name) continue;
+      const result = await this.securityService.validatePrescription(name, patientId);
+      if (!result.authorized && result.reason) alerts.push(result.reason);
+    }
+    return alerts;
   }
 
   private async runMockFallback(
     text: string,
     startTime: number,
+    externalPatientId?: string,
   ): Promise<Consultation & { draftId?: string }> {
-    const mockPatientId = `patient_${faker.string.alphanumeric(10)}`;
+    const patientId = externalPatientId?.trim() || `patient_${faker.string.alphanumeric(10)}`;
     const mockConsultation: Consultation = {
-      patientId: mockPatientId,
+      patientId,
       transcript: text || 'Consultation générée en mode MOCK',
       symptoms: ['Fièvre modérée', 'Maux de tête', 'Toux sèche', 'Fatigue'],
       diagnosis: [{ code: 'J11.1', label: 'Grippe saisonnière', confidence: 0.9 }],
@@ -258,8 +355,8 @@ export class ScribeService {
       this.logger.log(`[MOCK] ConsultationDraft sauvegardé: ${draft.id}`);
       this.metricsService.incrementCounter('scribe.analyze.mock.saved');
       this.metricsService.recordTiming('scribe.analyze.mock.duration', Date.now() - startTime);
-      await this.graphProjector.projectConsultation(validated.patientId, validated);
-      this.logger.log(`✅ Graph Projection Complete for patient ${validated.patientId}`);
+      await this.graphProjector.projectConsultation(patientId, validated);
+      this.logger.log(`✅ Graph Projection Complete for patient ${patientId}`);
     } catch (e) {
       this.logger.error('[MOCK] Erreur sauvegarde ConsultationDraft', e);
       this.metricsService.incrementCounter('scribe.analyze.mock.save_error');
@@ -363,6 +460,218 @@ export class ScribeService {
   }
 
   /**
+   * GET /api/scribe/patient/:patientId/intelligence
+   * Agrège profil (GraphReader) + alertes (Guardian) en JSON Human-Ready pour l'app hôte (Ben).
+   * Si le patient n'existe pas encore dans Neo4j (ex. cabinet-demo), retourne une réponse vide
+   * au lieu de 404 → le widget affiche le panneau au lieu de "Mode Déconnecté".
+   */
+  async getPatientIntelligence(patientId: string): Promise<IntelligenceResponse> {
+    let profile: Awaited<ReturnType<GraphReaderService['getPatientMedicalProfile']>>;
+    try {
+      profile = await this.graphReader.getPatientMedicalProfile(patientId);
+    } catch (e) {
+      if (e instanceof NotFoundException) {
+        return IntelligenceResponseSchema.parse({
+          summary: 'Aucune donnée enregistrée pour ce patient.',
+          timeline: [],
+          activeAlerts: [],
+          quickActions: [],
+        });
+      }
+      throw e;
+    }
+
+    const draft: Consultation = {
+      patientId: profile.patientId,
+      transcript: '',
+      symptoms: ['(profil)'],
+      diagnosis: [{ code: 'Z00', confidence: 1, label: 'Profil' }],
+      medications: (profile.medications ?? []).map((m) => ({
+        name: m.name,
+        dosage: m.dosage ?? '—',
+        duration: '—',
+      })),
+    };
+
+    let guardAlerts: string[] = [];
+    try {
+      guardAlerts = (await this.scribeGuardian.checkSafety(profile.patientId, draft)).alerts;
+    } catch (e) {
+      this.logger.warn(
+        '[getPatientIntelligence] Guardian checkSafety failed, using empty alerts',
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+
+    const activeAlerts = guardAlerts.map((message) => ({
+      level: (message.toLowerCase().includes('attention') || message.toLowerCase().includes('allergie') ? 'HIGH' : 'MEDIUM') as 'HIGH' | 'MEDIUM',
+      message,
+    }));
+
+    const consultations = profile.consultations ?? [];
+    const timeline = consultations.slice(0, 5).map((c) => ({
+      date: c.date ?? '',
+      type: 'consultation',
+      summary: c.date ? `Consultation du ${c.date}` : `Consultation ${c.id}`,
+    }));
+
+    const condLabels = (profile.conditions ?? []).map((c) => c.name).filter(Boolean);
+    const nCond = condLabels.length;
+    const nMed = (profile.medications ?? []).length;
+    const nCons = consultations.length;
+    let summary: string;
+    if (nCons === 0 && nCond === 0 && nMed === 0) {
+      summary = 'Aucune donnée enregistrée pour ce patient.';
+    } else {
+      const parts: string[] = [];
+      if (nCond) parts.push(`${nCond} condition(s) (${condLabels.slice(0, 3).join(', ')}${nCond > 3 ? '…' : ''})`);
+      if (nMed) parts.push(`${nMed} médicament(s)`);
+      if (nCons) parts.push(`${nCons} consultation(s)`);
+      summary = `Patient avec ${parts.join(', ')}. Suivi régulier.`;
+    }
+
+    const quickActions: string[] = [];
+    if (nMed > 0) quickActions.push('Renouvellement ordonnance');
+    if (nCons > 0) quickActions.push('Planifier prochain RDV');
+    if (activeAlerts.length > 0) quickActions.push('Vérifier alertes');
+
+    return IntelligenceResponseSchema.parse({
+      summary,
+      timeline,
+      activeAlerts,
+      quickActions,
+    });
+  }
+
+  /**
+   * Transaction de validation finale (distribuée simulée).
+   * ÉTAPE A : Verrouillage Postgres (status → VALIDATED).
+   * ÉTAPE B : Projection Neo4j via GraphProjectorService (Patient, Consultation, REVEALED, CONCLUDED, etc.).
+   *
+   * @param draftId – ID du draft
+   * @returns { draft, nodesCreated, neo4jRelationsCreated, warning? }
+   */
+  async validateDraft(draftId: string): Promise<{
+    draft: { id: string; patientId: string; status: string };
+    nodesCreated: number;
+    neo4jRelationsCreated: number;
+    warning?: string;
+  }> {
+    const startTime = Date.now();
+    this.logger.log(`Validating draft ${draftId}`);
+    this.metricsService.incrementCounter('scribe.validation.started');
+
+    const draft = await this.prisma.consultationDraft.findUnique({ where: { id: draftId } });
+    if (!draft) {
+      throw new NotFoundException(`Consultation draft ${draftId} not found`);
+    }
+
+    if (draft.status === 'VALIDATED') {
+      this.logger.warn(`Draft ${draftId} already validated`);
+      this.metricsService.incrementCounter('scribe.validation.already_validated');
+      return {
+        draft: { id: draft.id, patientId: draft.patientId, status: 'VALIDATED' },
+        nodesCreated: 0,
+        neo4jRelationsCreated: 0,
+        warning: 'Draft was already validated',
+      };
+    }
+
+    let consultation: Consultation;
+    try {
+      consultation = ConsultationSchema.parse(draft.structuredData) as Consultation;
+    } catch (e) {
+      const err = e as { errors?: unknown[] };
+      this.logger.warn(`[validateDraft] Invalid structuredData for ${draftId}`, err?.errors);
+      throw new BadRequestException({
+        message: 'Données structurées invalides',
+        errors: err?.errors ?? [],
+      });
+    }
+
+    // Pré-vérification Neo4j : éviter Postgres update + rollback si Neo4j indisponible
+    const { connected } = this.neo4j.getConnectionStats();
+    if (!connected) {
+      this.logger.warn(`[validateDraft] Neo4j indisponible, validation refusée pour ${draftId}`);
+      this.metricsService.incrementCounter('scribe.validation.neo4j_unavailable');
+      throw new ServiceUnavailableException(
+        'Neo4j indisponible. Démarrez Neo4j (ex. docker compose up neo4j) puis réessayez.',
+      );
+    }
+
+    // C+ Gardien (Firewall médical) : bloquer si ordonnance vs allergies patient (Neo4j)
+    const medsFromMedications = (consultation.medications ?? []).map((m) => ({
+      name: (m?.name ?? '').trim(),
+      dosage: m?.dosage ?? '',
+      duration: m?.duration ?? '',
+    }));
+    const medsFromPrescription = (consultation.prescription ?? []).map((p) => ({
+      name: (p?.drug ?? '').trim(),
+      dosage: p?.dosage ?? '',
+      duration: p?.duration ?? '',
+    }));
+    const allMeds = [...medsFromMedications, ...medsFromPrescription].filter((m) => m.name.length > 0);
+
+    const guardResult = await this.guardian.checkMedicationsAgainstAllergies(
+      draft.patientId,
+      allMeds,
+    );
+    if (!guardResult.safe && guardResult.conflicts.length > 0) {
+      const first = guardResult.conflicts[0];
+      const molecule = first.allergy.charAt(0).toUpperCase() + first.allergy.slice(1);
+      const msg = `INTERDICTION CRITIQUE : Patient allergique à ${molecule}.`;
+      this.logger.warn(`[validateDraft] C+ Gardien : ${msg}`);
+      this.metricsService.incrementCounter('scribe.guardian.blocked');
+      throw new BadRequestException(msg);
+    }
+
+    // ÉTAPE A : Verrouillage Postgres — status → VALIDATED
+    await this.prisma.consultationDraft.update({
+      where: { id: draftId },
+      data: { status: 'VALIDATED', updatedAt: new Date() },
+    });
+    this.logger.log(`Draft ${draftId} status → VALIDATED`);
+
+    try {
+      // ÉTAPE B : Projection Neo4j (Scribe model: Patient, Consultation, Condition, Medication, PRESCRIBES, TREATED_WITH, REVEALS)
+      // ScribeGraphProjector aligné avec GraphReader + ScribeGuardian (Intelligence / alertes).
+      const neo4jRelationsCreated = await this.scribeGraphProjector.projectDraft(draft);
+
+      const duration = Date.now() - startTime;
+      this.metricsService.recordTiming('scribe.validation.duration', duration);
+      this.metricsService.incrementCounter('scribe.validation.success');
+      this.metricsService.incrementCounter('scribe.validation.neo4j_relations', neo4jRelationsCreated);
+
+      return {
+        draft: { id: draft.id, patientId: draft.patientId, status: 'VALIDATED' },
+        nodesCreated: 0,
+        neo4jRelationsCreated,
+      };
+    } catch (neo4jError) {
+      this.logger.error(
+        `[validateDraft] Neo4j projection failed for draft ${draftId}; rolling back status to DRAFT`,
+        neo4jError instanceof Error ? neo4jError.message : String(neo4jError),
+      );
+      this.metricsService.incrementCounter('scribe.validation.neo4j_rollback');
+      try {
+        await this.prisma.consultationDraft.update({
+          where: { id: draftId },
+          data: { status: 'DRAFT', updatedAt: new Date() },
+        });
+        this.logger.log(`Draft ${draftId} status → DRAFT (rollback ok)`);
+      } catch (rollbackErr) {
+        this.logger.error(
+          `[validateDraft] Rollback Postgres failed for ${draftId}`,
+          rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+        );
+      }
+      throw new InternalServerErrorException(
+        'Projection Neo4j échouée ; le statut du draft a été rétabli à DRAFT. Réessayez ou vérifiez que Neo4j est démarré.',
+      );
+    }
+  }
+
+  /**
    * Analyze consultation text and return structured data according to ConsultationSchema
    * 
    * Law II: Hybrid Toggle
@@ -412,7 +721,12 @@ export class ScribeService {
             break;
 
           case 'CLOUD':
-            consultation = await this.analyzeConsultationCloud(text);
+            if (!this.openaiClient) {
+              this.logger.warn('CLOUD demandé mais pas de clé API valide → fallback MOCK');
+              consultation = this.analyzeConsultationMock(text, patientId);
+            } else {
+              consultation = await this.analyzeConsultationCloud(text);
+            }
             break;
 
           case 'LOCAL':
@@ -443,6 +757,27 @@ export class ScribeService {
     this.metricsService.recordTiming(`scribe.analyzeConsultation.${aiMode.toLowerCase()}`, duration);
     
     return result;
+  }
+
+  /**
+   * Prompt système partagé (CLOUD + LOCAL) pour l’analyse consultation.
+   * Extrait actes facturables (CCAM/NGAP) et ordonnance distinctement du résumé.
+   */
+  private getConsultationSystemPrompt(): string {
+    return `Tu es un assistant médical administratif expert.
+
+Ta tâche: structurer une consultation médicale en JSON STRICTEMENT conforme au schéma fourni.
+
+Tu dois extraire:
+1. Les actes facturables (billingCodes): codes CCAM ou NGAP si mentionnés ou déduits de la consultation (ex. consultation, examen, bilan). Chaque entrée: { code, label, confidence }.
+2. L’ordonnance médicamenteuse (prescription): distincte du résumé. Chaque entrée: { drug, dosage, duration }. Tu peux aussi renseigner medications (name, dosage, duration) pour les mêmes médicaments.
+
+Règles impératives:
+- Ne JAMAIS inventer de champs hors schéma.
+- Répondre UNIQUEMENT avec un JSON valide (aucun texte, aucune explication, aucun markdown).
+- Respecter exactement les clés attendues: patientId, transcript, symptoms, diagnosis, medications, billingCodes, prescription.
+- billingCodes et prescription peuvent être des tableaux vides si non déductibles.
+- confidence entre 0 et 1. Les champs requis doivent être présents; si absents du texte, inférer le plus probable sans sortir du schéma.`;
   }
 
   /**
@@ -507,6 +842,18 @@ export class ScribeService {
       { name: 'Strepsils', dosage: '1 comprimé', duration: '5 jours' },
     ];
     const medications = faker.helpers.arrayElements(medicationsList, { min: 0, max: 3 });
+    const prescription = medications.map((m) => ({
+      drug: m.name,
+      dosage: m.dosage,
+      duration: m.duration,
+    }));
+
+    const billingCodesList = [
+      { code: 'HBLT001', label: 'Consultation au cabinet', confidence: 0.9 },
+      { code: 'HBMD001', label: 'Examen clinique', confidence: 0.85 },
+      { code: 'JFSA001', label: 'Bilan biologique', confidence: 0.7 },
+    ];
+    const billingCodes = faker.helpers.arrayElements(billingCodesList, { min: 1, max: 2 });
 
     const consultation: Consultation = {
       patientId: generatedPatientId,
@@ -514,6 +861,8 @@ export class ScribeService {
       symptoms,
       diagnosis: diagnoses,
       medications,
+      billingCodes,
+      prescription,
     };
 
     // Valider avec le schéma Zod avant de retourner
@@ -538,23 +887,7 @@ export class ScribeService {
 
     // Convertir le schéma Zod en JSON Schema pour référence
     const jsonSchema = zodToJsonSchema(ConsultationSchema);
-
-    // Créer le prompt système
-    const systemPrompt = `Tu es un assistant médical expert.
-
-Ta tâche: structurer une consultation médicale en JSON STRICTEMENT conforme au schéma fourni.
-
-Règles impératives:
-- Ne JAMAIS inventer de champs hors schéma (ex: pas de patientName, pas de vitals).
-- Répondre UNIQUEMENT avec un JSON valide (aucun texte, aucune explication, aucun markdown).
-- Respecter exactement les clés attendues:
-  - patientId (string)
-  - transcript (string) : transcription brute
-  - symptoms (string[]) : liste non vide de symptômes (chaque entrée non vide)
-  - diagnosis ({ code, label, confidence }[]) : liste non vide
-  - medications ({ name, dosage, duration }[]) : peut être vide
-- confidence doit être un nombre entre 0 et 1.
-- Les champs requis doivent être présents même si certaines infos sont absentes du texte (dans ce cas, inférer le plus probable sans sortir du schéma).`;
+    const systemPrompt = this.getConsultationSystemPrompt();
 
     // Construire le prompt utilisateur
     const userPrompt = `Analyse la consultation suivante et génère une réponse structurée conforme au schéma JSON (source de vérité):
@@ -642,12 +975,14 @@ Réponds UNIQUEMENT avec un JSON valide.`;
     this.logger.debug('Phase C: Adding job to Redis Queue');
 
     try {
+      const systemPrompt = this.getConsultationSystemPrompt();
       // Ajouter le job à la queue
       const job = await this.scribeQueue!.add(
         'analyze-consultation',
         {
           text,
           jsonSchema,
+          system_prompt: systemPrompt,
         },
         {
           attempts: 3,
@@ -705,11 +1040,12 @@ Réponds UNIQUEMENT avec un JSON valide.`;
           const timeoutMs = this.configService.aiCortexTimeoutMs;
           
           this.logger.debug(`[LOCAL Direct] Appel Python via ${endpoint}`);
-          
+          const systemPrompt = this.getConsultationSystemPrompt();
+
           const response = await firstValueFrom(
             this.httpService.post<{ data: any }>(
               endpoint,
-              { text, schema: jsonSchema },
+              { text, schema: jsonSchema, system_prompt: systemPrompt },
               {
                 headers: { 'Content-Type': 'application/json' },
                 timeout: timeoutMs,
@@ -758,6 +1094,10 @@ Réponds UNIQUEMENT avec un JSON valide.`;
             return this.extractKnowledgeGraphMock(text, patientId);
 
           case 'CLOUD':
+            if (!this.openaiClient) {
+              this.logger.warn('CLOUD demandé mais pas de clé API valide (KG) → fallback MOCK');
+              return this.extractKnowledgeGraphMock(text, patientId);
+            }
             return this.extractKnowledgeGraphCloud(text, patientId);
 
           case 'LOCAL':

@@ -8,6 +8,7 @@ module.exports = {
       __dirname,
       '{src,pages,components,app}/**/*!(*.stories|*.spec).{ts,tsx,html,jsx,js}'
     ),
+    join(__dirname, '../../libs/scribe-ui/src/**/*.{ts,tsx}'),
     ...createGlobPatternsForDependencies(__dirname),
   ],
   theme: {

@@ -1,0 +1,3 @@
+# Cache / build (evite "Cannot read config file: .next/types/package.json")
+.next
+**/.next

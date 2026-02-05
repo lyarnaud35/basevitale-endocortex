@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ServiceUnavailableException, InternalServerErrorException } from '@nestjs/common';
 import { ScribeController } from './scribe.controller';
 import { ScribeService } from './scribe.service';
-import { KnowledgeGraphService } from '../knowledge-graph/knowledge-graph.service';
+import { ScribeGraphProjectorService } from './graph-projector.service';
+import { GraphReaderService } from './graph-reader.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { Neo4jService } from '../neo4j/neo4j.service';
 import { ScribeHealthService } from './scribe.health.service';
 import { MetricsService } from '../common/services/metrics.service';
 import { AuthGuard } from '../common/guards/auth.guard';
@@ -16,6 +16,8 @@ const mockConsultation = {
   symptoms: ['Toux', 'Fièvre'],
   diagnosis: [{ code: 'J00', label: 'Rhinopharyngite', confidence: 0.9 }],
   medications: [{ name: 'Paracétamol', dosage: '500mg', duration: '5 jours' }],
+  billingCodes: [{ code: 'HBLT001', label: 'Consultation au cabinet', confidence: 0.9 }],
+  prescription: [{ drug: 'Paracétamol', dosage: '500mg', duration: '5 jours' }],
 };
 
 const mockDraft = {
@@ -29,6 +31,13 @@ const mockDraft = {
 
 const mockValidatedDraft = { ...mockDraft, status: 'VALIDATED' as const };
 
+const mockIntelligence = {
+  summary: 'Patient avec 1 consultation(s). Suivi régulier.',
+  timeline: [{ date: '2025-01-01', type: 'consultation', summary: 'Consultation du 2025-01-01' }],
+  activeAlerts: [] as { level: 'HIGH' | 'MEDIUM'; message: string }[],
+  quickActions: ['Planifier prochain RDV'],
+};
+
 const mockScribeService = {
   analyze: jest.fn().mockResolvedValue(mockConsultation),
   analyzeConsultation: jest.fn().mockResolvedValue(mockConsultation),
@@ -36,6 +45,12 @@ const mockScribeService = {
     draft: { id: 'draft-1', patientId: 'patient-123', status: 'DRAFT', updatedAt: new Date() },
     consultation: mockConsultation,
   }),
+  validateDraft: jest.fn().mockResolvedValue({
+    draft: { id: 'draft-1', patientId: 'patient-123', status: 'VALIDATED' },
+    nodesCreated: 0,
+    neo4jRelationsCreated: 2,
+  }),
+  getPatientIntelligence: jest.fn().mockResolvedValue(mockIntelligence),
 };
 
 const mockPrisma = {
@@ -49,16 +64,6 @@ const mockPrisma = {
   patient: {
     findUnique: jest.fn(),
   },
-};
-
-const mockKnowledgeGraphService = {
-  createNodes: jest.fn().mockResolvedValue([
-    { id: 'node-1', nodeType: 'SYMPTOM', label: 'Toux', cim10Code: null, confidence: null },
-  ]),
-};
-
-const mockNeo4jService = {
-  executeTransaction: jest.fn().mockResolvedValue([{ summary: () => ({ counters: { relationshipsCreated: () => 2 } }) }]),
 };
 
 const mockScribeHealthService = {
@@ -87,6 +92,20 @@ const mockMetricsService = {
   }),
 };
 
+const mockScribeGraphProjector = {
+  projectDraft: jest.fn().mockResolvedValue(0),
+};
+
+const mockGraphReaderService = {
+  getPatientMedicalProfile: jest.fn().mockResolvedValue({
+    patientId: 'patient-123',
+    consultations: [{ id: 'c1', date: '2025-01-01' }],
+    conditions: [],
+    medications: [],
+    symptomsRecurrent: ['Toux'],
+  }),
+};
+
 describe('ScribeController', () => {
   let controller: ScribeController;
 
@@ -101,9 +120,9 @@ describe('ScribeController', () => {
       controllers: [ScribeController],
       providers: [
         { provide: ScribeService, useValue: mockScribeService },
-        { provide: KnowledgeGraphService, useValue: mockKnowledgeGraphService },
+        { provide: ScribeGraphProjectorService, useValue: mockScribeGraphProjector },
+        { provide: GraphReaderService, useValue: mockGraphReaderService },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: Neo4jService, useValue: mockNeo4jService },
         { provide: ScribeHealthService, useValue: mockScribeHealthService },
         { provide: MetricsService, useValue: mockMetricsService },
       ],
@@ -196,6 +215,46 @@ describe('ScribeController', () => {
     });
   });
 
+  describe('GET /scribe/patient/:patientId/profile', () => {
+    it('should return patient medical profile', async () => {
+      const profile = await controller.getPatientProfile('patient-123');
+      expect(profile.patientId).toBe('patient-123');
+      expect(profile.consultations).toHaveLength(1);
+      expect(profile.consultations[0].id).toBe('c1');
+      expect(profile.symptomsRecurrent).toContain('Toux');
+      expect(mockGraphReaderService.getPatientMedicalProfile).toHaveBeenCalledWith('patient-123');
+    });
+
+    it('should throw when graph reader throws', async () => {
+      mockGraphReaderService.getPatientMedicalProfile.mockRejectedValueOnce(new NotFoundException('Patient xyz introuvable'));
+      await expect(controller.getPatientProfile('xyz')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('GET /scribe/patient/:patientId/intelligence', () => {
+    it('should return human-ready intelligence', async () => {
+      const res = await controller.getPatientIntelligence('patient-123');
+      expect(res.summary).toBe(mockIntelligence.summary);
+      expect(res.timeline).toHaveLength(1);
+      expect(res.activeAlerts).toEqual([]);
+      expect(res.quickActions).toContain('Planifier prochain RDV');
+      expect(mockScribeService.getPatientIntelligence).toHaveBeenCalledWith('patient-123');
+    });
+
+    it('should return empty intelligence when patient unknown (no 404)', async () => {
+      const empty = {
+        summary: 'Aucune donnée enregistrée pour ce patient.',
+        timeline: [],
+        activeAlerts: [],
+        quickActions: [],
+      };
+      mockScribeService.getPatientIntelligence.mockResolvedValueOnce(empty);
+      const res = await controller.getPatientIntelligence('xyz');
+      expect(res).toEqual(empty);
+      expect(mockScribeService.getPatientIntelligence).toHaveBeenCalledWith('xyz');
+    });
+  });
+
   describe('GET /scribe/health', () => {
     it('should return health payload', async () => {
       const res = await controller.getHealth();
@@ -221,28 +280,64 @@ describe('ScribeController', () => {
   });
 
   describe('PUT /scribe/validate/:id', () => {
-    it('should validate draft, create nodes and return result', async () => {
-      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(mockDraft);
+    it('should validate draft via service and return result', async () => {
       const res = await controller.validateDraft('draft-1');
+      expect(mockScribeService.validateDraft).toHaveBeenCalledWith('draft-1');
       expect(res.draft.status).toBe('VALIDATED');
-      expect(res.nodesCreated).toBeGreaterThanOrEqual(0);
-      expect(mockKnowledgeGraphService.createNodes).toHaveBeenCalled();
-      expect(mockPrisma.consultationDraft.update).toHaveBeenCalled();
-      expect(mockMetricsService.incrementCounter).toHaveBeenCalledWith('scribe.validation.started');
-      expect(mockMetricsService.incrementCounter).toHaveBeenCalledWith('scribe.validation.success');
+      expect(res.nodesCreated).toBe(0);
+      expect(res.neo4jRelationsCreated).toBe(2);
+      expect(res.nodes).toEqual([]);
     });
 
     it('should return early when draft already validated', async () => {
-      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(mockValidatedDraft);
+      mockScribeService.validateDraft.mockResolvedValueOnce({
+        draft: { id: 'draft-1', patientId: 'patient-123', status: 'VALIDATED' },
+        nodesCreated: 0,
+        neo4jRelationsCreated: 0,
+        warning: 'Draft was already validated',
+      });
       const res = await controller.validateDraft('draft-1');
       expect(res.warning).toBe('Draft was already validated');
       expect(res.nodesCreated).toBe(0);
-      expect(mockKnowledgeGraphService.createNodes).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when draft missing', async () => {
-      mockPrisma.consultationDraft.findUnique.mockResolvedValueOnce(null);
+      mockScribeService.validateDraft.mockRejectedValueOnce(new NotFoundException('Consultation draft missing not found'));
       await expect(controller.validateDraft('missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('POST /scribe/validate/:draftId (validateFinal)', () => {
+    it('should delegate to validateDraft and return { success, graphNodesCreated }', async () => {
+      mockScribeService.validateDraft.mockResolvedValueOnce({
+        draft: { id: 'draft-1', patientId: 'patient-123', status: 'VALIDATED' },
+        nodesCreated: 0,
+        neo4jRelationsCreated: 5,
+      });
+
+      const res = await controller.validateFinal('draft-1');
+
+      expect(res).toEqual({ success: true, graphNodesCreated: 5 });
+      expect(mockScribeService.validateDraft).toHaveBeenCalledWith('draft-1');
+    });
+
+    it('should throw NotFoundException when draft missing', async () => {
+      mockScribeService.validateDraft.mockRejectedValueOnce(new NotFoundException('Consultation draft missing not found'));
+      await expect(controller.validateFinal('missing')).rejects.toThrow(NotFoundException);
+      expect(mockScribeService.validateDraft).toHaveBeenCalledWith('missing');
+    });
+
+    it('should throw BadRequestException when Guardian blocks (allergy)', async () => {
+      mockScribeService.validateDraft.mockRejectedValueOnce(new BadRequestException('INTERDICTION CRITIQUE : Patient allergique à Pénicilline.'));
+      await expect(controller.validateFinal('draft-1')).rejects.toThrow(BadRequestException);
+      expect(mockScribeService.validateDraft).toHaveBeenCalledWith('draft-1');
+    });
+
+    it('should throw InternalServerErrorException when validateDraft fails', async () => {
+      mockScribeService.validateDraft.mockRejectedValueOnce(new Error('Neo4j connection refused'));
+
+      await expect(controller.validateFinal('draft-1')).rejects.toThrow(InternalServerErrorException);
+      expect(mockScribeService.validateDraft).toHaveBeenCalledWith('draft-1');
     });
   });
 });

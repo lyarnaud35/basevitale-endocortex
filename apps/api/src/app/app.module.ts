@@ -43,7 +43,11 @@ import { QueryOptimizerModule } from '../common/services/query-optimizer.module'
 import { PerformanceInterceptor } from '../common/interceptors/performance.interceptor';
 import { TimeoutInterceptor } from '../common/interceptors/timeout.interceptor';
 import { CompressionMiddleware } from '../common/middleware/compression.middleware';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ApiKeyGuard } from '../common/guards/api-key.guard';
+import { CoreGhostModule } from '../core-ghost/core-ghost.module';
+import { ScribeGhostController } from '../scribe/scribe-ghost.controller';
+import { SecurityModule } from '../security/security.module';
 
 @Module({
   imports: [
@@ -51,7 +55,9 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
     CacheModule,
     PrismaModule,
     Neo4jModule,
+    CoreGhostModule,
     ScribeModule,
+    SecurityModule,
     IdentityModule,
     KnowledgeGraphModule,
     BillingModule,
@@ -85,11 +91,12 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
       },
     }),
   ],
-  controllers: [AppController, HealthController, MetricsController],
+  controllers: [AppController, HealthController, MetricsController, ScribeGhostController],
   providers: [
     AppService,
     MetricsService,
     HealthService,
+    { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_INTERCEPTOR, useClass: TimeoutInterceptor, multi: true } as any,
     { provide: APP_INTERCEPTOR, useClass: PerformanceInterceptor, multi: true } as any,
   ],

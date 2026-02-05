@@ -25,13 +25,13 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
    */
   async onModuleInit() {
     try {
-      // Utiliser localhost au lieu du nom du conteneur pour le développement local
       const uri = process.env.NEO4J_URI || 'bolt://localhost:7687';
       const user = process.env.NEO4J_USER || 'neo4j';
       const password = process.env.NEO4J_PASSWORD || 'neo4j';
 
-      // Si NEO4J_URI contient le nom du conteneur, le remplacer par localhost
-      const normalizedUri = uri.replace(/bolt:\/\/neo4j:/, 'bolt://localhost:');
+      // En production (Docker), utiliser l'URI telle quelle (ex: bolt://neo4j:7687)
+      // En dev local, le default bolt://localhost:7687 convient
+      const normalizedUri = uri;
 
       this.logger.log(`Connecting to Neo4j at ${normalizedUri.replace(/\/\/[^@]+@/, '//***@')}`);
 

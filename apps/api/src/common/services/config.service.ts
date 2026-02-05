@@ -104,6 +104,18 @@ export class ConfigService {
     return process.env.JWT_SECRET;
   }
 
+  /** Clé API pour les appels backend-to-backend (header X-INTERNAL-API-KEY). */
+  get internalApiKey(): string | undefined {
+    return process.env.INTERNAL_API_KEY;
+  }
+
+  /** Origines CORS autorisées (ALLOWED_ORIGINS, séparées par des virgules). Vide = aucune. */
+  get allowedOrigins(): string[] {
+    const raw = process.env.ALLOWED_ORIGINS;
+    if (!raw || raw.trim() === '') return [];
+    return raw.split(',').map((o) => o.trim()).filter(Boolean);
+  }
+
   get corsOrigin(): string {
     return process.env.CORS_ORIGIN || '*';
   }

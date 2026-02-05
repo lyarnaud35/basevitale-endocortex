@@ -7,9 +7,10 @@ set -e
 export REDIS_HOST="${REDIS_HOST:-localhost}"
 export REDIS_PORT="${REDIS_PORT:-6379}"
 export AI_MODE="${AI_MODE:-MOCK}"
+export PORT="${PORT:-3000}"
 
 echo "🔧 API-only mode (no Docker)"
-echo "   REDIS_HOST=$REDIS_HOST REDIS_PORT=$REDIS_PORT AI_MODE=$AI_MODE"
+echo "   PORT=$PORT REDIS_HOST=$REDIS_HOST REDIS_PORT=$REDIS_PORT AI_MODE=$AI_MODE"
 echo ""
 
 cd "$(dirname "$0")/.."
