@@ -4,7 +4,8 @@
     "baseUrl": "..",
     "types": ["node", "jest"],
     "paths": {
-      "@basevitale/shared": ["../../libs/shared/src/index.ts"]
+      "@basevitale/shared": ["../../libs/shared/src/index.ts"],
+      "@basevitale/cortex-sdk": ["../../libs/cortex-sdk/src/index.ts"]
     }
   },
   "include": ["**/*.e2e-spec.ts", "../src/**/*.ts"]

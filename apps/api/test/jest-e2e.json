@@ -8,7 +8,8 @@
     "^.+\\.ts$": ["ts-jest", { "tsconfig": "<rootDir>/test/tsconfig.e2e.json" }]
   },
   "moduleNameMapper": {
-    "^@basevitale/shared$": "<rootDir>/../../libs/shared/src/index.ts"
+    "^@basevitale/shared$": "<rootDir>/../../libs/shared/src/index.ts",
+    "^@basevitale/cortex-sdk$": "<rootDir>/../../libs/cortex-sdk/src/index.ts"
   },
   "moduleFileExtensions": ["ts", "js", "json"],
   "transformIgnorePatterns": [

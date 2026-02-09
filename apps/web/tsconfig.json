@@ -24,7 +24,7 @@
       "@basevitale/shared": ["libs/shared/src/index.ts"],
       "@basevitale/shared/*": ["libs/shared/src/*"],
       "@basevitale/scribe-ui": ["libs/scribe-ui/src/index.ts"],
-      "@basevitale/scribe-ui/*": ["libs/scribe-ui/src/*"]
+      "@basevitale/scribe-ui/*": ["libs/scribe-ui/src/*"],"@basevitale/cortex-sdk":["libs/cortex-sdk/src/index.ts"]
     }
   },
   "include": [

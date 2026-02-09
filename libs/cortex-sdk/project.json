@@ -1,0 +1,21 @@
+{
+  "name": "cortex-sdk",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/cortex-sdk/src",
+  "projectType": "library",
+  "tags": ["type:shared", "scope:cortex"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/cortex-sdk",
+        "main": "libs/cortex-sdk/src/index.ts",
+        "tsConfig": "libs/cortex-sdk/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}
