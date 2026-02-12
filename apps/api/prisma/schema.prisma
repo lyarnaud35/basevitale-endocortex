@@ -60,7 +60,8 @@ model Patient {
   medicalImages     MedicalImage[]
   appointments      Appointment[]
   allergies         Allergy[]
-  
+  invoices          Invoice[]
+
   @@map("patients")
   @@index([insToken])
   @@index([insHash])
@@ -225,6 +226,43 @@ model Consultation {
 // ============================================================================
 // MODULE E+ : FACTURATION
 // ============================================================================
+
+/// Règles de facturation (NGAP/CCAM) – Data over Code.
+/// Chargées au démarrage ; rechargeables via POST /admin/rules/reload sans redéploiement.
+model BillingRules {
+  id        String   @id @default(cuid())
+  version   String   @unique // ex: "NGAP_2024"
+  payload   Json     // Tableau de règles (condition-action)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("billing_rules")
+  @@index([version])
+}
+
+/// Facture – Cristallisation du calcul (Grand Livre).
+/// Jamais de Float pour l'argent : totalAmount en Decimal.
+model Invoice {
+  id           String   @id @default(uuid())
+  patientId    String?  // Optionnel pour démo / patients externes
+  patient      Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  totalAmount  Decimal  @db.Decimal(10, 2) // Montant total (€)
+  breakdown    Json     // Résultat exact du moteur : lignes + amo, amc, amount_patient
+  acts         String[] // Codes actes (ex: ["C"]) pour traçabilité
+  status       String   @default("DRAFT") // DRAFT | VALIDATED | TRANSMITTED | PAID | REJECTED
+  rulesVersion String   // ex: "NGAP_2024" – crucial pour l'audit
+  fseToken       String?   // Lot FSE (Feuille de Soins Électronique) – généré à la télétransmission
+  fseGeneratedAt DateTime? // Traçabilité temporelle de la télétransmission
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("invoices")
+  @@index([patientId])
+  @@index([status])
+  @@index([createdAt])
+}
 
 /// Événement de facturation
 /// Généré automatiquement depuis le Knowledge Graph (Module E+)

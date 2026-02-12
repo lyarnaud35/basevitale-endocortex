@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   useGetPatientDashboardState,
   getGetPatientDashboardStateQueryKey,
@@ -12,8 +12,14 @@ import { PatientTimeline } from './components/PatientTimeline';
 import { CodingSuggestions } from './components/CodingSuggestions';
 import { CodingAssistantWidget } from './components/CodingAssistantWidget';
 import { StratègeInput } from './components/StrategistInput';
+import { useCodingAssistant } from '../../hooks/useCodingAssistant';
 
 const DEFAULT_PATIENT_ID = 'patient-dashboard-test';
+
+/** SessionId stable par visite (test split-brain : ouvrir un 2e onglet = autre session). */
+function useStableSessionId(): string {
+  return useMemo(() => `sess-${Math.random().toString(36).slice(2, 10)}`, []);
+}
 
 /**
  * GHOST PROTOCOL - Cockpit (Projection du JSON en UI).
@@ -22,6 +28,8 @@ const DEFAULT_PATIENT_ID = 'patient-dashboard-test';
  */
 export default function DashboardPage() {
   const queryClient = useQueryClient();
+  const codingSessionId = useStableSessionId();
+  const coding = useCodingAssistant(codingSessionId);
   const {
     data: apiResponse,
     isLoading: loadingState,
@@ -173,13 +181,33 @@ export default function DashboardPage() {
               onReset={handleReset}
             />
             <CodingSuggestions suggestions={payload.coding.suggestions} />
-            {/* Stratège (Semaine 3) : envoyer texte → le widget apparaît si SUGGESTING (ex. "Grippe"), disparaît si SILENT (ex. "fatigue") */}
-            <div className="space-y-2">
+            {/* Stratège (Semaine 3) : WebSocket /coding – une session par onglet (split-brain : 2 onglets = 2 sessions). */}
+            <div
+              className={`space-y-2 rounded-lg p-3 ${
+                coding.connectionStatus === 'error'
+                  ? 'border-2 border-red-300 bg-red-50/50'
+                  : 'border border-gray-200'
+              }`}
+            >
               <h3 className="text-sm font-semibold text-gray-600">
                 Lab Cortex – Stratège
+                {coding.sessionId && (
+                  <span className="ml-1 font-mono text-xs text-gray-400">
+                    ({coding.sessionId})
+                  </span>
+                )}
+                {coding.connectionStatus === 'error' && (
+                  <span className="ml-2 text-xs font-medium text-red-600">Hors ligne</span>
+                )}
               </h3>
-              <StratègeInput />
-              <CodingAssistantWidget />
+              <StratègeInput
+                submitText={coding.submitText}
+                disabled={!coding.isConnected}
+              />
+              <CodingAssistantWidget
+                machineState={coding.data}
+                isLoading={coding.isLoading}
+              />
             </div>
           </div>
 

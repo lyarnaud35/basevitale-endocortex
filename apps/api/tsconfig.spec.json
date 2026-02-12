@@ -9,12 +9,22 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["jest", "node"],
+    "types": [
+      "jest",
+      "node"
+    ],
     "paths": {
-      "@basevitale/shared": ["../../libs/shared/src/index.ts"]
-    }
+      "@basevitale/shared": [
+        "../../libs/shared/src/index.ts"
+      ],
+      "@basevitale/cortex-sdk": [
+        "../../libs/cortex-sdk/src/index.ts"
+      ]
+    },
+    "resolveJsonModule": true
   },
   "include": [
+    "src/billing/rules/ngap_2024.json",
     "jest.config.ts",
     "src/**/*.test.ts",
     "src/**/*.spec.ts",

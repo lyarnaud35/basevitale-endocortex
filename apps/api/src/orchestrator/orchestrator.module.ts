@@ -8,6 +8,7 @@ import {
 } from './orchestrator.processor';
 import { WebSocketsModule } from '../websockets/websockets.module';
 import { SecurityModule } from '../security/security.module';
+import { CodingModule } from '../coding/coding.module';
 import { ConsultationOrchestratorService } from './consultation-orchestrator.service';
 import { OrchestratorController } from './orchestrator.controller';
 
@@ -26,6 +27,7 @@ import { OrchestratorController } from './orchestrator.controller';
     ),
     WebSocketsModule,
     SecurityModule,
+    CodingModule,
   ],
   controllers: [OrchestratorController],
   providers: [

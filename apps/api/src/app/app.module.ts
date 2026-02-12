@@ -32,6 +32,7 @@ import { BackupModule } from '../backup/backup.module';
 import { PDFExtractionModule } from '../pdf-extraction/pdf-extraction.module';
 import { DocumentAnalysisModule } from '../document-analysis/document-analysis.module';
 import { Neo4jModule } from '../neo4j/neo4j.module';
+import { OntologyModule } from '../ontology/ontology.module';
 import { LoggingMiddleware } from '../common/middleware/logging.middleware';
 import { RequestIdMiddleware } from '../common/middleware/request-id.middleware';
 import { RateLimitMiddleware } from '../common/middleware/rate-limit.middleware';
@@ -48,13 +49,22 @@ import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { CoreGhostModule } from '../core-ghost/core-ghost.module';
 import { ScribeGhostController } from '../scribe/scribe-ghost.controller';
 import { SecurityModule } from '../security/security.module';
+import { LlmModule } from '../llm/llm.module';
+import { OracleModule } from '../oracle/oracle.module';
+import { PatientModule } from '../patient/patient.module';
+import { GhostEventModule } from '../ghost-event/ghost-event.module';
 
 @Module({
   imports: [
     ConfigModule,
     CacheModule,
+    LlmModule,
+    OracleModule,
+    PatientModule,
+    GhostEventModule,
     PrismaModule,
     Neo4jModule,
+    OntologyModule,
     CoreGhostModule,
     ScribeModule,
     SecurityModule,

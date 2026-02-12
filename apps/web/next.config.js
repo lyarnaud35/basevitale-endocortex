@@ -24,13 +24,14 @@ const nextConfig = {
     };
     return config;
   },
-  // Proxy /api vers l'API NestJS (port 3000 par défaut). Le front appelle /api en relatif → même origine, pas de CORS.
+  // Proxy /api vers l'API NestJS. Par défaut API sur 3001 pour éviter conflit avec Next sur 3000.
   async rewrites() {
-    const target = process.env.API_BACKEND_URL || 'http://localhost:3000';
+    const target = process.env.API_BACKEND_URL || 'http://localhost:3001';
     return [{ source: '/api/:path*', destination: `${target}/api/:path*` }];
   },
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+    // Vide = le front utilise l’origine courante (/api en relatif) et le proxy ci‑dessus envoie vers API_BACKEND_URL.
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? '',
   },
   poweredByHeader: false,
   compress: true,

@@ -1,12 +1,17 @@
 'use client';
 
-import { useCodingAssistant } from '../../../hooks/useCodingAssistant';
+import type { CodingStrategistWsState } from '@basevitale/shared';
+
+export type CodingAssistantWidgetProps = {
+  machineState?: CodingStrategistWsState | null;
+  isLoading?: boolean;
+};
 
 /**
  * Widget "Marionnette" – N'affiche rien si le backend dit shouldDisplay === false (Silence Attentionnel).
+ * Le parent doit fournir machineState et isLoading (via useCodingAssistant).
  */
-export function CodingAssistantWidget() {
-  const { data: machineState, isLoading } = useCodingAssistant();
+export function CodingAssistantWidget({ machineState, isLoading }: CodingAssistantWidgetProps) {
 
   if (isLoading) {
     return (

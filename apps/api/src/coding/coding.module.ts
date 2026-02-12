@@ -8,12 +8,14 @@ import { CodingAssistantController } from './coding-assistant.controller';
 import { CodingSimulatorService } from './coding-simulator.service';
 import { CodingStrategistService } from './coding-strategist.service';
 import { CodingStrategistController } from './coding-strategist.controller';
+import { CodingGateway } from './coding.gateway';
 
 /**
  * CodingModule – Ghost Protocol (CodingMachine + CodingAssistantMachine).
  * CodingMachine : CIM-10/11, seuil 0.6 → SUGGESTING ou SILENT (texte manuel).
  * CodingAssistantMachine (Semaine 3) : s'abonne à l'Oracle, IDLE → ANALYZING → SUGGESTING | SILENT.
  * Stratège (Laboratoire déterministe) : machine XState + simulateur, routes /coding/strategist/*.
+ * CodingGateway : WebSocket namespace /coding (temps réel par sessionId).
  */
 @Module({
   imports: [forwardRef(() => OracleModule)],
@@ -23,6 +25,7 @@ import { CodingStrategistController } from './coding-strategist.controller';
     CodingStrategistController,
   ],
   providers: [
+    CodingGateway,
     CodingService,
     CodingGhostService,
     CodingAssistantService,

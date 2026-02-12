@@ -89,8 +89,16 @@ describe('ScribeService', () => {
       return 60000;
     },
     get aiServiceUrl(): string {
-      // Conformité avec ConfigService réel: en dev local, défaut = localhost
       return process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    },
+    get cloudApiKey(): string {
+      return process.env.XAI_API_KEY || 'test-xai-key';
+    },
+    get cloudBaseUrl(): string {
+      return 'https://api.x.ai/v1';
+    },
+    get cloudModel(): string {
+      return 'grok-2-mini';
     },
   };
 

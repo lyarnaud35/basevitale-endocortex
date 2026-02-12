@@ -1,0 +1,31 @@
+[
+  {
+    "id": "CONSULTATION_BASE",
+    "type": "line",
+    "trigger": "C",
+    "price": 26.50,
+    "part_secu": 0.7,
+    "conditions": [],
+    "label": "Consultation (C)"
+  },
+  {
+    "id": "MAJORATION_ENFANT_MEG",
+    "type": "line",
+    "trigger": "C",
+    "price": 5.00,
+    "part_secu": 1.0,
+    "conditions": [
+      { "fact": "patient.age", "operator": "lessThan", "value": 6 }
+    ],
+    "label": "Majoration Enfant (-6 ans)",
+    "ruleId": "MEG"
+  },
+  {
+    "id": "CMU_TIERS_PAYANT",
+    "type": "modifier",
+    "conditions": [
+      { "fact": "patient.coverage", "operator": "equal", "value": 1 }
+    ],
+    "effect": "patient_pays_zero"
+  }
+]

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Neo4jService } from '../neo4j/neo4j.service';
-import { DRUG_DB, ALLERGY_TO_CLASSES } from './drug-db.mock';
+import { DrugService } from './drug.service';
 
 /** Résultat de la validation Mini-Vidal (Strategy : remplaçable par API Vidal). */
 export interface ValidationResult {
@@ -9,18 +9,42 @@ export interface ValidationResult {
 }
 
 /**
- * Module C+ (Security Guardian) – Preuve de concept Mini-Vidal.
- * Vérification des contre-indications via référentiel local (DRUG_DB).
- * Plus tard : remplacer par appel API Vidal sans changer la logique d’intégration.
+ * Familles d'allergies → radicaux de molécules à considérer comme contre-indiqués.
+ * Permet de matcher "pénicilline" avec des spécialités contenant amoxicilline, ampicilline, etc.
+ */
+const ALLERGY_FAMILY_TO_MOLECULE_STEMS: Record<string, string[]> = {
+  pénicilline: ['amoxicilline', 'ampicilline', 'penicillin', 'pénicilline', 'benzylpénicilline'],
+  penicillin: ['amoxicilline', 'ampicilline', 'penicillin', 'pénicilline'],
+  penicilline: ['amoxicilline', 'ampicilline', 'penicillin', 'pénicilline'],
+  aspirine: ['aspirine', 'acide acétylsalicylique', 'salicylate'],
+  salicyle: ['aspirine', 'acide acétylsalicylique', 'salicylate'],
+  salicylés: ['aspirine', 'acide acétylsalicylique', 'salicylate'],
+  ains: ['ibuprofène', 'ketoprofène', 'diclofenac', 'naproxène', 'aspirine'],
+};
+
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .trim();
+}
+
+/**
+ * Module C+ (Security Guardian) – Deep Roots.
+ * Vérification des contre-indications : allergies patient (Neo4j) × molécules du médicament (ontologie BDPM).
  */
 @Injectable()
 export class SecurityService {
   private readonly logger = new Logger(SecurityService.name);
 
-  constructor(private readonly neo4j: Neo4jService) {}
+  constructor(
+    private readonly neo4j: Neo4jService,
+    private readonly drugService: DrugService,
+  ) {}
 
   /**
-   * Valide une prescription : allergies patient (Neo4j) × classes du médicament (DRUG_DB).
+   * Valide une prescription : allergies patient (Neo4j) × molécules du médicament (ontologie Neo4j).
    */
   async validatePrescription(
     medicationName: string,
@@ -31,20 +55,24 @@ export class SecurityService {
       return { authorized: true, reason: '' };
     }
 
-    const drugEntry = this.resolveDrug(medicationName);
-    if (!drugEntry) {
+    const molecules = await this.drugService.getMoleculesForMedication(medicationName);
+    if (molecules.length === 0) {
       return { authorized: true, reason: '' };
     }
 
-    const drugClasses = new Set(drugEntry.classes);
+    const moleculeDesignationsNorm = molecules.map((m) => normalize(m.designation));
 
     for (const allergy of allergies) {
-      const ac = ALLERGY_TO_CLASSES[allergy] ?? this.inferAllergyClasses(allergy);
-      for (const c of ac) {
-        if (drugClasses.has(c)) {
-          const reason = `Médication "${medicationName}" contre-indiquée : allergie à "${allergy}" (classe ${c}).`;
-          this.logger.warn(`[Security] ${reason}`);
-          return { authorized: false, reason };
+      const allergyNorm = normalize(allergy);
+      const stems = ALLERGY_FAMILY_TO_MOLECULE_STEMS[allergyNorm] ?? [allergyNorm];
+
+      for (const designNorm of moleculeDesignationsNorm) {
+        for (const stem of stems) {
+          if (designNorm.includes(stem) || stem.includes(designNorm)) {
+            const reason = `Médication "${medicationName}" contre-indiquée : allergie à "${allergy}" (substance : ${designNorm}).`;
+            this.logger.warn(`[Security] ${reason}`);
+            return { authorized: false, reason };
+          }
         }
       }
     }
@@ -76,23 +104,5 @@ export class SecurityService {
       );
       return [];
     }
-  }
-
-  /** Trouve l’entrée DRUG_DB pour un nom de médicament (exact ou partiel). */
-  private resolveDrug(medicationName: string): { classes: string[] } | null {
-    const n = medicationName.toLowerCase().trim();
-    if (DRUG_DB[n]) return DRUG_DB[n];
-    for (const [key, entry] of Object.entries(DRUG_DB)) {
-      if (n.includes(key) || key.includes(n)) return entry;
-    }
-    return null;
-  }
-
-  /** Heuristique : déduire des classes à partir du libellé d’allergie. */
-  private inferAllergyClasses(allergy: string): string[] {
-    const a = allergy.toLowerCase();
-    if (/p[eé]nicill|penicillin/.test(a)) return ['PENICILLINE'];
-    if (/aspirin|salicyl|ains/.test(a)) return ['SALICYLE', 'AINS'];
-    return [];
   }
 }

@@ -3,8 +3,32 @@
  * Version Cabinet - Architecture Neuro-Symbiotique
  */
 
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+
+// Charger .env à la racine du monorepo (nx serve api tourne depuis la racine)
+const rootEnv = join(process.cwd(), '.env');
+if (existsSync(rootEnv)) {
+  const content = readFileSync(rootEnv, 'utf-8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const eq = trimmed.indexOf('=');
+      if (eq > 0) {
+        const key = trimmed.slice(0, eq).trim();
+        let val = trimmed.slice(eq + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
+          val = val.slice(1, -1);
+        if (key && val !== undefined) process.env[key] = val;
+      }
+    }
+  }
+}
+
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
+import { HttpAdapterHost } from '@nestjs/core';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app/app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -13,14 +37,20 @@ import { DatabaseExceptionFilter } from './common/filters/database-exception.fil
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ConfigService } from './common/services/config.service';
+import { validateEnv } from './common/env';
 
 async function bootstrap() {
+  // Ghost Protocol : validation Zod env (XAI_API_KEY requise). Casse au démarrage si manquante.
+  validateEnv();
+
   const logger = new Logger('Bootstrap');
   const configService = new ConfigService();
   
   const app = await NestFactory.create(AppModule, {
     logger: configService.logLevel as any,
   });
+
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   // Global prefix
   const globalPrefix = 'api';
@@ -67,8 +97,7 @@ async function bootstrap() {
         'L’API doit être démarrée pour que « Try it out » fonctionne (pas de ERR_CONNECTION_REFUSED).',
     )
     .setVersion('v115.0')
-    .setBasePath(globalPrefix)
-    .addServer('/', 'Serveur courant (même origine que cette page)')
+    .addServer(`/${globalPrefix}`, 'Serveur courant (même origine que cette page)')
     .addApiKey(
       { type: 'apiKey', in: 'header', name: 'X-INTERNAL-API-KEY', description: 'Clé API interne (backend-to-backend)' },
       'X-INTERNAL-API-KEY',
@@ -76,12 +105,22 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   document.security = [{ 'X-INTERNAL-API-KEY': [] }];
-  // Montage explicite sur /api/docs ; options pour éviter le warning deep link (espaces → _) et les requêtes favicon
+  // Montage explicite sur /api/docs ; JSON aussi sur /api/docs-json
   SwaggerModule.setup('api/docs', app, document, {
     swaggerOptions: {
-      deepLinking: false, // évite le warning "escaping deep link whitespace with _"
+      deepLinking: false,
       persistAuthorization: true,
     },
+  });
+
+  // Exposition du document OpenAPI à /api-json et /api/api-json (générateurs de code, Swagger UI)
+  const httpAdapter = app.get(HttpAdapterHost).httpAdapter;
+  const server = httpAdapter.getInstance();
+  server.get('/api-json', (_req: unknown, res: unknown) => {
+    (res as any).status(200).json(document);
+  });
+  server.get('/api/api-json', (_req: unknown, res: unknown) => {
+    (res as any).status(200).json(document);
   });
 
   const port = configService.port;

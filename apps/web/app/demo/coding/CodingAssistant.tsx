@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useCodingMachine } from '../hooks/useCodingMachine';
-import type { CodingMachineState } from '@basevitale/shared';
+import type { CodingStrategistWsState } from '@basevitale/shared';
 
 const DEBOUNCE_MS = 500;
 
@@ -54,7 +54,7 @@ function ConfidenceBar({ confidence }: { confidence: number }) {
   );
 }
 
-function SuggestingView({ context }: { context: CodingMachineState['context'] }) {
+function SuggestingView({ context }: { context: CodingStrategistWsState['context'] }) {
   const suggestions = context?.suggestions ?? [];
   if (suggestions.length === 0) return null;
   return (

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { CodingEvent } from '@basevitale/cortex-sdk';
+import type { CodingSuggestionItem } from '@basevitale/shared';
 
 /**
  * Laboratoire Déterministe – Cerveau factice pour le Stratège (Semaine 3).
@@ -8,6 +9,32 @@ import type { CodingEvent } from '@basevitale/cortex-sdk';
 @Injectable()
 export class CodingSimulatorService {
   private readonly logger = new Logger(CodingSimulatorService.name);
+
+  /**
+   * Module B+ – Suggestion de codes CIM-10 (mock pour l'Orchestrateur).
+   * Fièvre → R50.9, Toux → R05, Grippe → J11. Sinon liste vide.
+   */
+  suggestCodes(text: string): CodingSuggestionItem[] {
+    const lower = (text || '').toLowerCase().trim();
+    this.logger.debug(`[Simulator] suggestCodes("${lower.slice(0, 60)}...")`);
+    const out: CodingSuggestionItem[] = [];
+    if (lower.includes('fièvre') || lower.includes('fievre')) {
+      out.push({ code: 'R50.9', label: 'Fièvre, sans précision', confidence: 0.9 });
+    }
+    if (lower.includes('toux')) {
+      out.push({ code: 'R05', label: 'Toux', confidence: 0.85 });
+    }
+    if (lower.includes('grippe')) {
+      out.push({ code: 'J11', label: 'Grippe avec manifestations respiratoires', confidence: 0.92 });
+    }
+    if (lower.includes('migraine') || lower.includes('céphalée') || lower.includes('cephalee')) {
+      out.push({ code: 'G43.9', label: 'Migraine, sans précision', confidence: 0.88 });
+    }
+    if (lower.includes('diabète') || lower.includes('diabete')) {
+      out.push({ code: 'E11', label: 'Diabète de type 2', confidence: 0.87 });
+    }
+    return out;
+  }
 
   /**
    * Simule latence + réponse IA. Force les cas limites.

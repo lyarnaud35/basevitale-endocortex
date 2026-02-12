@@ -28,9 +28,14 @@ yarn-error.log
 # OS
 .DS_Store
 
+# BDPM / Ontology (données téléchargées ANSM)
+data/
+apps/api/data/
+
 # Environment
 .env
 .env.bak
+.env.bak*
 .env.local
 .env.*.local
 # Keep .env.example for documentation

@@ -4,6 +4,7 @@
 import type { UseQueryOptions } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
 import type { PatientDashboardStateApiResponse } from './model/patientDashboard';
+import type { AnalyzeFullContextResponse, AnalyzeFullContextBody } from './model/orchestratorAnalyze';
 
 /** Base URL de l'API (vide = même origine). À surcharger via getBaseUrl(). */
 let baseUrl = '';
@@ -35,6 +36,23 @@ async function customFetch<T>(
     throw err;
   }
   return res.json();
+}
+
+// ============== Orchestrator (Fusion C+ et B+) ==============
+
+/**
+ * Analyse complète : Gardien (C+) + Stratège (B+) en parallèle.
+ * POST /api/orchestrator/analyze
+ * Déballage de l'enveloppe { success, data, timestamp } côté API.
+ */
+export async function analyzeFullContext(
+  body: AnalyzeFullContextBody = {}
+): Promise<AnalyzeFullContextResponse> {
+  const raw = await customFetch<{ success?: boolean; data?: AnalyzeFullContextResponse }>(
+    '/api/orchestrator/analyze',
+    { method: 'POST', body: JSON.stringify(body) }
+  );
+  return raw?.data ?? (raw as unknown as AnalyzeFullContextResponse);
 }
 
 // ============== Patient (Dashboard) ==============

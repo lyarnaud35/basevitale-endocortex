@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/commo
 import { ApiTags, ApiOperation, ApiResponse, ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional, IsObject } from 'class-validator';
 import { Public } from '../common/decorators/public.decorator';
+import type { SecurityGuardWsState } from '@basevitale/shared';
 import {
   ConsultationOrchestratorService,
   type ConsultationState,
@@ -28,6 +29,27 @@ function toPrescribeResponse(result: PrescribeResult): PrescribeResponse {
     feedback: result.message,
     securityData: result.securityDetails,
   };
+}
+
+/** DTO entrant pour POST /orchestrator/analyze (Fusion C+ et B+) */
+class AnalyzeBodyDto {
+  @IsOptional()
+  @IsString()
+  @ApiProperty({ example: 'Le patient a de la fièvre et tousse. Pénicilline contre-indiquée.', required: false })
+  text?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiProperty({ description: 'Identifiant patient pour le Gardien', required: false })
+  patientId?: string;
+}
+
+/** DTO entrant pour POST /orchestrator/analyze-symptoms (Module B+) */
+class AnalyzeSymptomsBodyDto {
+  @IsOptional()
+  @IsString()
+  @ApiProperty({ example: 'Le patient présente une toux sèche et de la fièvre.', required: false })
+  text?: string;
 }
 
 /** DTO entrant pour POST /orchestrator/prescribe (drugName ou drugId acceptés) */
@@ -72,6 +94,39 @@ export class OrchestratorController {
       patientContext: body?.patientContext,
     });
     return toPrescribeResponse(result);
+  }
+
+  @Post('analyze')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Fusion C+ et B+ – Analyse texte (sécurité + codes CIM-10) en parallèle',
+    description: 'Un seul appel : Gardien (C+) + Stratège (B+). Ne modifie pas l\'état global.',
+  })
+  @ApiResponse({ status: 200, description: 'security (Gardien) + suggestions (CIM-10)' })
+  async analyze(@Body() body: AnalyzeBodyDto): Promise<{
+    security: SecurityGuardWsState;
+    suggestions: Array<{ code: string; label: string; confidence: number }>;
+  }> {
+    const text = typeof body?.text === 'string' ? body.text : '';
+    const patientId = typeof body?.patientId === 'string' ? body.patientId : undefined;
+    const result = await this.consultationOrchestrator.analyzeText(text, patientId);
+    return {
+      security: result.security,
+      suggestions: result.suggestions as Array<{ code: string; label: string; confidence: number }>,
+    };
+  }
+
+  @Post('analyze-symptoms')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Module B+ – Analyse symptômes → suggestions CIM-10',
+    description: 'Passe par l\'Orchestrateur. Mock déterministe (fièvre/toux/grippe).',
+  })
+  @ApiResponse({ status: 200, description: 'Liste de suggestions { code, label, confidence }' })
+  async analyzeSymptoms(@Body() body: AnalyzeSymptomsBodyDto): Promise<{ suggestions: Array<{ code: string; label: string; confidence: number }> }> {
+    const text = typeof body?.text === 'string' ? body.text : '';
+    const { suggestions } = await this.consultationOrchestrator.analyzeSymptoms(text);
+    return { suggestions: suggestions as Array<{ code: string; label: string; confidence: number }> };
   }
 
   @Get('state')

@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrescriptionGuardService } from '../security/prescription-guard.service';
+import type { CodingSuggestionItem } from '@basevitale/shared';
+import { CodingSimulatorService } from '../coding/coding-simulator.service';
 import type { SecurityGuardWsState } from '@basevitale/shared';
 
 /**
@@ -35,7 +37,10 @@ export class ConsultationOrchestratorService {
 
   private currentState: ConsultationState = 'IDLE';
 
-  constructor(private readonly guard: PrescriptionGuardService) {}
+  constructor(
+    private readonly guard: PrescriptionGuardService,
+    private readonly codingSimulator: CodingSimulatorService,
+  ) {}
 
   /**
    * Reçoit une intention (ex: PRESCRIBE), interroge la Sécurité, met à jour l'état global.
@@ -82,5 +87,51 @@ export class ConsultationOrchestratorService {
   /** Remet l'état à IDLE (ex: nouvelle consultation). */
   reset(): void {
     this.currentState = 'IDLE';
+  }
+
+  /**
+   * Module B+ – Analyse de symptômes (texte) → suggestions de codes CIM-10.
+   * Passe toujours par l'Orchestrateur (Cerveau Central), pas d'appel direct au Coding.
+   */
+  async analyzeSymptoms(text: string): Promise<{ suggestions: CodingSuggestionItem[] }> {
+    this.logger.log(`Analyze symptoms: "${(text || '').slice(0, 60)}..."`);
+    const suggestions = this.codingSimulator.suggestCodes(text || '');
+    return { suggestions };
+  }
+
+  /**
+   * Fusion des hémisphères – Analyse complète en un appel.
+   * Lance en parallèle : Gardien (C+) et Stratège (B+). Ne modifie pas l'état global de la consultation.
+   */
+  async analyzeText(
+    text: string,
+    patientId?: string,
+  ): Promise<{ security: SecurityGuardWsState; suggestions: CodingSuggestionItem[] }> {
+    const t = (text || '').trim();
+    this.logger.log(`Analyze full context: "${t.slice(0, 60)}..."`);
+    const sessionId = `analyze-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const drugId = this.extractDrugFromText(t);
+    const patientContext = patientId != null ? { patientId } : undefined;
+
+    try {
+      const [suggestions, security] = await Promise.all([
+        Promise.resolve(this.codingSimulator.suggestCodes(t)),
+        Promise.resolve(
+          this.guard.checkPrescription(sessionId, { drugId, patientContext }),
+        ),
+      ]);
+      return { security, suggestions };
+    } finally {
+      this.guard.destroySession(sessionId);
+    }
+  }
+
+  /** Mock : extrait un médicament depuis le texte pour le Gardien (C+). */
+  private extractDrugFromText(text: string): string {
+    const lower = text.toLowerCase();
+    if (/\b(penicilline|pénicilline|amoxicilline|penicillin)\b/.test(lower))
+      return 'Pénicilline';
+    if (/\b(doliprane|paracetamol|paracétamol)\b/.test(lower)) return 'Doliprane';
+    return '';
   }
 }

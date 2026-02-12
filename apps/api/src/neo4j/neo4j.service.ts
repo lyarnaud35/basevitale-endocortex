@@ -35,12 +35,13 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
 
       this.logger.log(`Connecting to Neo4j at ${normalizedUri.replace(/\/\/[^@]+@/, '//***@')}`);
 
-      // Créer le driver Neo4j
+      // Créer le driver Neo4j (encryption off pour dev local / Docker sans TLS)
       this.driver = neo4j.driver(normalizedUri, neo4j.auth.basic(user, password), {
         maxConnectionPoolSize: 50,
-        connectionAcquisitionTimeout: 2000,
+        connectionAcquisitionTimeout: 5000,
         connectionTimeout: 30000,
-        disableLosslessIntegers: true, // Utiliser Number au lieu de Integer
+        disableLosslessIntegers: true,
+        encrypted: process.env.NEO4J_ENCRYPTED === 'true' ? true : false,
       });
 
       // Vérifier la connexion

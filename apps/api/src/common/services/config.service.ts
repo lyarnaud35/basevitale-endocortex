@@ -34,39 +34,43 @@ export class ConfigService {
     return (process.env.AI_MODE || 'MOCK').toUpperCase() as 'MOCK' | 'CLOUD' | 'LOCAL';
   }
 
-  get openaiApiKey(): string | undefined {
-    return process.env.OPENAI_API_KEY;
-  }
-
-  /** CLOUD: 'groq' | 'openai'. Défaut: groq si GROQ_API_KEY, sinon openai. */
-  get cloudProvider(): 'groq' | 'openai' {
-    const p = (process.env.CLOUD_LLM_PROVIDER || '').toLowerCase();
-    if (p === 'groq' || p === 'openai') return p;
-    return process.env.GROQ_API_KEY ? 'groq' : 'openai';
-  }
-
-  get groqApiKey(): string | undefined {
-    return process.env.GROQ_API_KEY;
-  }
-
-  /** Base URL pour le provider cloud. Groq = API OpenAI-compatible. */
-  get cloudBaseUrl(): string {
-    return this.cloudProvider === 'groq'
-      ? 'https://api.groq.com/openai/v1'
-      : 'https://api.openai.com/v1';
-  }
-
-  /** Modèle à utiliser en CLOUD (Groq ou OpenAI). Rapides pour dev UI (< 2s). */
-  get cloudModel(): string {
-    if (this.cloudProvider === 'groq') {
-      return process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+  /** Clé API xAI (Grok). Requise au démarrage (validée par env.schema Zod). */
+  get xaiApiKey(): string {
+    const key = process.env.XAI_API_KEY;
+    if (!key || key.trim() === '') {
+      throw new Error('XAI_API_KEY est requise (validation env Zod au bootstrap)');
     }
-    return process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+    return key;
   }
 
-  /** Clé API pour le provider cloud actif. */
-  get cloudApiKey(): string | undefined {
-    return this.cloudProvider === 'groq' ? this.groqApiKey : this.openaiApiKey;
+  /** Base URL xAI (API OpenAI-compatible). */
+  get cloudBaseUrl(): string {
+    return 'https://api.x.ai/v1';
+  }
+
+  /** Modèle xAI (ex: grok-2, grok-2-mini). */
+  get cloudModel(): string {
+    return process.env.XAI_MODEL || 'grok-2-mini';
+  }
+
+  /** Clé API pour le provider cloud (xAI). */
+  get cloudApiKey(): string {
+    return this.xaiApiKey;
+  }
+
+  /** Oracle : MOCK (données fictives) | LIVE (appel Gemini). */
+  get oracleMode(): 'MOCK' | 'LIVE' {
+    return (process.env.ORACLE_MODE || 'MOCK').toUpperCase() as 'MOCK' | 'LIVE';
+  }
+
+  /** Clé API Google Gemini (Oracle LIVE). Requise si ORACLE_MODE=LIVE. */
+  get geminiApiKey(): string | undefined {
+    return process.env.GEMINI_API_KEY?.trim() || undefined;
+  }
+
+  /** Modèle Gemini (ex: gemini-1.5-flash). */
+  get geminiModel(): string {
+    return process.env.GEMINI_MODEL || 'gemini-1.5-flash';
   }
 
   get pythonSidecarUrl(): string {

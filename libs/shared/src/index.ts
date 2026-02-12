@@ -10,7 +10,10 @@ export * from './contracts/patient-timeline.schema';
 export * from './contracts/intelligence.schema';
 export * from './contracts/scribe-machine.schema';
 export * from './contracts/security-machine.schema';
+export * from './contracts/security-ws-events';
 export * from './contracts/coding-machine.schema';
+export * from './contracts/coding-ws-events';
+export * from './contracts/dashboard-state.schema';
 
 // Mocks (tests / démo)
 export * from './mocks/patient-zero';

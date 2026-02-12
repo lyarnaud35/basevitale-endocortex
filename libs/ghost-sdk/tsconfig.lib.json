@@ -3,7 +3,11 @@
   "compilerOptions": {
     "outDir": "../../dist/out-tsc",
     "declaration": true,
-    "types": ["node", "react"]
+    "types": ["node", "react"],
+    "baseUrl": "../..",
+    "paths": {
+      "@basevitale/shared": ["dist/libs/shared/src"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["jest.config.ts", "src/**/*.spec.ts", "src/**/*.test.ts"]

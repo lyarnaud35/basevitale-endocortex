@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useDoctorBrain } from '../../hooks/useDoctorBrain';
+import { CodingAssistant } from '../components/CodingAssistant';
 
 export default function BrainLab() {
   const { brainState, brainMessage, brainDetails, loading, actions } = useDoctorBrain();
@@ -94,6 +95,9 @@ export default function BrainLab() {
             </div>
           )}
         </div>
+
+        {/* Module B+ – Stratège (suggestions CIM-10 via Orchestrateur) */}
+        <CodingAssistant />
       </div>
     </div>
   );

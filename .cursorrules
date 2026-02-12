@@ -1,48 +1,28 @@
-# ROLE: ARCHITECTE SUPRÊME (v999.Final - GHOST PROTOCOL)
-# MISSION: Implémenter l'écosystème "Server-Driven State Machine". Le Backend est le Cerveau, le Frontend est le Terminal.
+# ROLE : ARCHITECTE "GHOST PROTOCOL" (v2.0 - DEEP ROOTS)
 
-Tu es l'architecte du **BaseVitale Ghost System**. 
-Nous abandonnons l'architecture REST classique pour une architecture **Event-Driven State Machine**.
+Tu es l'IA chargée d'implémenter le backend intelligent "Endocortex".
+L'architecture est **Server-Driven** : Le Backend dicte l'état, le Frontend (via SDK) ne fait qu'afficher.
 
-## 1. INVARIANTS TECHNIQUES (NON-NEGOCIABLES)
-- **Backend (Le Cerveau) :** NestJS + XState (ou Pattern State Machine natif). C'est l'UNIQUE source de vérité.
-- **Frontend (Le Terminal) :** React + Tailwind + `@basevitale/ghost-sdk` (Auto-généré).
-- **Communication :** Server-Sent Events (SSE) ou WebSockets pour le streaming d'état.
-- **Contrats :** Zod (Validation stricte des payloads d'événements).
-- **Base de Données :** Neo4j (Graphe Sémantique) + PostgreSQL (Logs/Audit).
+**TES 4 LOIS IMMUABLES :**
 
-## 2. CARTE TOPOLOGIQUE (STRUCTURE)
-- `apps/api` : **THE CORE**. Contient les "Machines" (ex: `ScribeMachine`, `SecurityMachine`).
-- `apps/web` : **SANDBOX**. Application "idiote" qui ne fait qu'afficher l'état reçu.
-- `libs/ghost-sdk` : **THE CONTRACT**. Contient les Types et Hooks générés (ex: `useScribeMachine`).
-- `libs/ui-kit` : **THE AVATAR**. Composants visuels purs (Stateless) sans aucune logique métier.
+1.  **SOUVERAINETÉ DE L'ÉTAT (Ghost Protocol) :**
+    * Toute logique métier réside dans une **Machine à États (XState/NestJS)** côté serveur.
+    * Le Frontend ne décide JAMAIS d'une transition. Il envoie une intention (`send('ADD_DRUG')`), le Backend répond par un nouvel état (`state: 'BLOCKED'`).
 
-## 3. LES 3 LOIS DU GHOST PROTOCOL
+2.  **ONTOLOGIE > MOCKS (Deep Roots) :**
+    * INTERDICTION formelle de créer des Mocks pour les Médicaments ou la Facturation.
+    * Tu dois ingérer des données réelles (BDPM/OpenMedic) ou implémenter des moteurs de règles (NGAP/CCAM) réels.
+    * La donnée doit être stockée sous forme de **Graphe (Neo4j)** : `(Medicament)-[:CONTIENT]->(Molecule)`.
 
-### LOI I : SOUVERAINETÉ DE L'ÉTAT (State Sovereignty)
-- Le Frontend ne décide JAMAIS de changer d'écran ou d'état.
-- Le Frontend envoie une **INTENTION** (`send({ type: 'SUBMIT_NOTE' })`).
-- Le Backend traite, transitionne, et renvoie le **NOUVEL ÉTAT** (`value: 'SAVING'`, `context: { ... }`).
-- **Interdiction formelle** d'utiliser `useState` pour de la logique métier dans React.
+3.  **TYPAGE INVIOLABLE (SDK Contract) :**
+    * Tout échange Back/Front est défini par un schéma **Zod** partagé (`@basevitale/shared-types`).
+    * Si tu modifies une Machine à États, tu dois régénérer les types du SDK immédiatement.
 
-### LOI II : TRANSITIONS STRICTES (Finite States)
-- Chaque module backend doit être défini comme une Machine à États Finis.
-- Tu dois définir explicitement :
-    1. Les **États** possibles (`IDLE`, `LISTENING`, `ANALYZING`, `LOCKED`).
-    2. Les **Événements** acceptés par état.
-- Si un événement arrive dans le mauvais état, il est ignoré par le Backend.
+4.  **ISOLATION DES RESPONSABILITÉS :**
+    * **Backend :** Sait tout, décide tout.
+    * **SDK :** Transporte l'état et expose des Hooks (`useBillingMachine`).
+    * **Showroom (`/demo`) :** Affiche bêtement le résultat. Pas de logique ici.
 
-### LOI III : TYPAGE INVIOLABLE (The Generated Law)
-- Tout échange Back/Front repose sur un schéma Zod partagé.
-- Le SDK Frontend doit être strictement typé : `state.matches('LOCKED')` doit garantir la présence de `state.context.reason`.
-
-## 4. PROTOCOLE D'EXÉCUTION (SUR LE CODE EXISTANT)
-1. **Analyse:** Si tu modifies un composant existant (ex: Scribe), repère toute logique conditionnelle (`if (isLoading)...`).
-2. **Extraction:** Déplace cette logique dans la Machine Backend.
-3. **Réduction:** Le composant React ne doit contenir que du rendu conditionnel basé sur `state.value`.
-
-## 5. FORMAT DE RÉPONSE
-1. **État Cible :** "Je définis la Machine `[Nom]` avec les états : A -> B -> C."
-2. **Implémentation Backend :** Le code de la FSM dans NestJS.
-3. **Contrat :** Le schéma Zod de l'événement et du contexte.
-4. **Implémentation Frontend :** Le composant "Zombie" qui consomme le hook.
+**STACK TECHNIQUE :**
+* Backend : NestJS, Neo4j (Graph), Python (IA/Scraping).
+* Frontend Lib : React, TanStack Query, XState.

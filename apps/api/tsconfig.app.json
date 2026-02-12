@@ -8,15 +8,17 @@
     "baseUrl": ".",
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
+    "resolveJsonModule": true,
     "paths": {
-      "@basevitale/shared": ["../../libs/shared/src/index.ts"]
+      "@basevitale/shared": ["../../libs/shared/src/index.ts"],
+      "@basevitale/cortex-sdk": ["../../libs/cortex-sdk/src/index.ts"]
     },
     // Désactiver les vérifications de fichiers déclarés pour éviter TS6305
     "declaration": false,
     "declarationMap": false
   },
   "exclude": ["jest.config.ts", "src/**/*.spec.ts", "src/**/*.test.ts"],
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/billing/rules/ngap_2024.json"]
   // Références désactivées temporairement car shared n'est pas buildée
   // "references": [
   //   {

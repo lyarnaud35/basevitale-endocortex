@@ -96,23 +96,20 @@ export class ScribeService {
       this.logger.log(`AI Cache enabled (TTL: ${this.cacheTTL}ms)`);
     }
 
-    // Initialiser client cloud (OpenAI-compatible) si mode CLOUD — Groq ou OpenAI
-    // Ne jamais utiliser 'dummy' ni clé placeholder : sans clé valide → pas de client, fallback MOCK.
+    // Initialiser client cloud (OpenAI-compatible) si mode CLOUD — xAI (Grok)
+    // XAI_API_KEY validée au bootstrap (Zod) ; ici on utilise cloudBaseUrl xAI.
     if (this.aiMode === 'CLOUD') {
-      const provider = this.configService.cloudProvider;
       const apiKey = this.configService.cloudApiKey;
       const valid = this.isValidCloudApiKey(apiKey);
       if (!valid) {
-        this.logger.warn(
-          `${provider === 'groq' ? 'GROQ_API_KEY' : 'OPENAI_API_KEY'} absente ou invalide → appels CLOUD ignorés, fallback MOCK`,
-        );
+        this.logger.warn('XAI_API_KEY absente ou invalide → appels CLOUD ignorés, fallback MOCK');
         this.openaiClient = null;
       } else {
         this.openaiClient = new OpenAI({
-          apiKey: apiKey!,
+          apiKey,
           baseURL: this.configService.cloudBaseUrl,
         });
-        this.logger.log(`CLOUD provider: ${provider}, model: ${this.configService.cloudModel}`);
+        this.logger.log(`CLOUD provider: xAI, model: ${this.configService.cloudModel}`);
       }
     } else {
       this.openaiClient = null;
@@ -877,9 +874,8 @@ Règles impératives:
    * Bypasses Python to save resources and reduce latency
    */
   private async analyzeConsultationCloud(text: string): Promise<Consultation> {
-    const provider = this.configService.cloudProvider;
     const model = this.configService.cloudModel;
-    this.logger.debug(`Using CLOUD mode with ${provider} (${model})`);
+    this.logger.debug(`Using CLOUD mode with xAI (${model})`);
 
     if (!this.openaiClient) {
       throw new Error('Cloud LLM client not initialized');
@@ -912,7 +908,7 @@ Réponds UNIQUEMENT avec un JSON valide.`;
 
       const responseText = completion.choices[0]?.message?.content;
       if (!responseText) {
-        throw new Error(`No response from ${provider}`);
+        throw new Error('No response from xAI');
       }
 
       // Parser la réponse JSON
@@ -923,9 +919,9 @@ Réponds UNIQUEMENT avec un JSON valide.`;
       return ConsultationSchema.parse(parsedResponse);
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error(`Error calling ${provider}`, err);
+      this.logger.error('Error calling xAI', err);
       this.metricsService.incrementCounter('scribe.extractions.cloud.error');
-      throw new Error(`${provider} API error: ${err.message}`);
+      throw new Error(`xAI API error: ${err.message}`);
     }
   }
 

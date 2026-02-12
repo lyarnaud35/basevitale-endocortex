@@ -22,34 +22,34 @@ datasource db {
 /// Patient identifié par INS (Identité Nationale de Santé)
 /// Un patient = Un Token unique (INS)
 model Patient {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // INS - Identité Nationale de Santé (non-négociable dès J1)
-  insToken          String   @unique // Token INS unique
-  insHash           String   @unique // Hash INS pour dédoublonnage
-  
+  insToken String @unique // Token INS unique
+  insHash  String @unique // Hash INS pour dédoublonnage
+
   // Identité
-  firstName         String
-  lastName          String
-  birthDate         DateTime
-  birthPlace        String?
-  
+  firstName  String
+  lastName   String
+  birthDate  DateTime
+  birthPlace String?
+
   // Contact
-  email             String?
-  phone             String?
-  
+  email String?
+  phone String?
+
   // Adresse
-  addressLine1      String?
-  addressLine2      String?
-  city              String?
-  postalCode        String?
-  country           String   @default("FR")
-  
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  postalCode   String?
+  country      String  @default("FR")
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  createdBy         String   // User ID qui a créé le patient
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String // User ID qui a créé le patient
+
   // Relations
   consultations     Consultation[]
   semanticNodes     SemanticNode[]
@@ -60,10 +60,11 @@ model Patient {
   medicalImages     MedicalImage[]
   appointments      Appointment[]
   allergies         Allergy[]
-  
-  @@map("patients")
+  invoices          Invoice[]
+
   @@index([insToken])
   @@index([insHash])
+  @@map("patients")
 }
 
 // ============================================================================
@@ -73,81 +74,81 @@ model Patient {
 /// Nœud sémantique dans le Knowledge Graph
 /// Représente une entité médicale (symptôme, diagnostic, médicament, etc.)
 model SemanticNode {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Type de nœud (symptom, diagnosis, medication, procedure, etc.)
-  nodeType          String   // enum: SYMPTOM, DIAGNOSIS, MEDICATION, PROCEDURE, ANTECEDENT, CONSTANT, ACT
-  
+  nodeType String // enum: SYMPTOM, DIAGNOSIS, MEDICATION, PROCEDURE, ANTECEDENT, CONSTANT, ACT
+
   // Classification standardisée
-  snomedCtCode      String?  // Code SNOMED CT si disponible
-  cim10Code         String?  // Code CIM-10 si applicable
-  cim11Code         String?  // Code CIM-11 si applicable
-  
+  snomedCtCode String? // Code SNOMED CT si disponible
+  cim10Code    String? // Code CIM-10 si applicable
+  cim11Code    String? // Code CIM-11 si applicable
+
   // Libellé
-  label             String   // Libellé du nœud
-  description       String?  // Description détaillée
-  
+  label       String // Libellé du nœud
+  description String? // Description détaillée
+
   // Embedding vectoriel pour recherche sémantique (pgvector)
   // Note: Prisma ne supporte pas nativement vector, utiliser Raw SQL ou une colonne Json
   // Pour l'instant, on stocke en JSON, mais idéalement utiliser pgvector directement
-  embedding         Json?    // Vecteur d'embedding [float, float, ...]
-  
+  embedding Json? // Vecteur d'embedding [float, float, ...]
+
   // Valeurs (pour constantes, résultats labo, etc.)
-  value             Json?    // Valeur du nœud (number, string, date, etc.)
-  unit              String?  // Unité de mesure si applicable
-  
+  value Json? // Valeur du nœud (number, string, date, etc.)
+  unit  String? // Unité de mesure si applicable
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  confidence        Float?   // Score de confiance (0-1) si généré par IA
-  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  confidence Float? // Score de confiance (0-1) si généré par IA
+
   // Relations
-  patientId         String?
-  patient           Patient? @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  patientId String?
+  patient   Patient? @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Relations du graphe (Many-to-Many avec attributs)
-  sourceRelations   SemanticRelation[] @relation("SourceNode")
-  targetRelations   SemanticRelation[] @relation("TargetNode")
-  
+  sourceRelations SemanticRelation[] @relation("SourceNode")
+  targetRelations SemanticRelation[] @relation("TargetNode")
+
   // Consultation source
-  consultationId    String?
-  consultation      Consultation? @relation(fields: [consultationId], references: [id], onDelete: Cascade)
-  
-  @@map("semantic_nodes")
+  consultationId String?
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
   @@index([patientId])
   @@index([consultationId])
   @@index([nodeType])
   @@index([snomedCtCode])
+  @@map("semantic_nodes")
 }
 
 /// Relation entre nœuds sémantiques
 /// Représente un lien causal, temporel, ou sémantique dans le Knowledge Graph
 model SemanticRelation {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Nœuds source et cible
-  sourceNodeId      String
-  sourceNode        SemanticNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
-  
-  targetNodeId      String
-  targetNode        SemanticNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
-  
+  sourceNodeId String
+  sourceNode   SemanticNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+
+  targetNodeId String
+  targetNode   SemanticNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
   // Type de relation
-  relationType      String   // enum: CAUSES, PRECEDES, ASSOCIATED_WITH, OCCURS_IN, RELATES_TO, etc.
-  
+  relationType String // enum: CAUSES, PRECEDES, ASSOCIATED_WITH, OCCURS_IN, RELATES_TO, etc.
+
   // Attributs de la relation
-  strength          Float?   // Force de la relation (0-1)
-  evidence          String?  // Preuve de la relation (texte ou référence)
-  
+  strength Float? // Force de la relation (0-1)
+  evidence String? // Preuve de la relation (texte ou référence)
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  confidence        Float?   // Score de confiance si généré par IA
-  
-  @@map("semantic_relations")
+  createdAt  DateTime @default(now())
+  confidence Float? // Score de confiance si généré par IA
+
+  @@unique([sourceNodeId, targetNodeId, relationType])
   @@index([sourceNodeId])
   @@index([targetNodeId])
   @@index([relationType])
-  @@unique([sourceNodeId, targetNodeId, relationType])
+  @@map("semantic_relations")
 }
 
 // ============================================================================
@@ -158,101 +159,138 @@ model SemanticRelation {
 /// Draft de consultation avec données structurées stockées en JSONB
 /// Architecture v150: JSONB pour flexibilité, colonnes strictes pour métadonnées
 model ConsultationDraft {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Colonnes strictes (métadonnées critiques)
-  patientId         String   // ID du patient (obligatoire)
-  status            String   @default("DRAFT") // enum: DRAFT, VALIDATED, CANCELLED
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  patientId String // ID du patient (obligatoire)
+  status    String   @default("DRAFT") // enum: DRAFT, VALIDATED, CANCELLED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Données structurées en JSONB (flexibilité)
   // Structure conforme à ConsultationSchema (Zod)
   // Contient: transcript, symptoms[], diagnosis[], medications[]
-  structuredData    Json     // Données structurées selon ConsultationSchema
-  
-  @@map("consultation_drafts")
+  structuredData Json // Données structurées selon ConsultationSchema
+
   @@index([patientId])
   @@index([status])
   @@index([createdAt])
+  @@map("consultation_drafts")
 }
 
 /// Consultation médicale
 /// Draft stocké en JSONB, validé puis transformé en nœuds sémantiques
 model Consultation {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Patient
-  patientId         String
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Dates
-  consultationDate  DateTime @default(now())
-  startTime         DateTime
-  endTime           DateTime?
-  
+  consultationDate DateTime  @default(now())
+  startTime        DateTime
+  endTime          DateTime?
+
   // Statut
-  status            String   @default("DRAFT") // enum: DRAFT, VALIDATED, BILLED, CANCELLED
-  
+  status String @default("DRAFT") // enum: DRAFT, VALIDATED, BILLED, CANCELLED
+
   // Données brutes (transcription audio, texte libre)
-  rawTranscript     String?  // Transcription brute (Whisper)
-  rawText           String?  // Texte libre saisi manuellement
-  
+  rawTranscript String? // Transcription brute (Whisper)
+  rawText       String? // Texte libre saisi manuellement
+
   // Données structurées (Draft en JSONB)
-  draftData         Json     // Structure libre avant validation (ex: ConsultationSchema)
-  
+  draftData Json // Structure libre avant validation (ex: ConsultationSchema)
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  validatedAt       DateTime?
-  createdBy         String   // User ID du médecin
-  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  validatedAt DateTime?
+  createdBy   String // User ID du médecin
+
   // Relations
-  semanticNodes     SemanticNode[]
-  medicalDocuments  MedicalDocument[]
-  medicalReports    MedicalReport[]
-  appointment       Appointment?
-  
+  semanticNodes    SemanticNode[]
+  medicalDocuments MedicalDocument[]
+  medicalReports   MedicalReport[]
+  appointment      Appointment?
+
   // Facturation (Module E+)
-  billingEvents     BillingEvent[]
-  
-  @@map("consultations")
+  billingEvents BillingEvent[]
+
   @@index([patientId])
   @@index([status])
   @@index([consultationDate])
+  @@map("consultations")
 }
 
 // ============================================================================
 // MODULE E+ : FACTURATION
 // ============================================================================
 
+/// Règles de facturation (NGAP/CCAM) – Data over Code.
+/// Chargées au démarrage ; rechargeables via POST /admin/rules/reload sans redéploiement.
+model BillingRules {
+  id        String   @id @default(cuid())
+  version   String   @unique // ex: "NGAP_2024"
+  payload   Json // Tableau de règles (condition-action)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([version])
+  @@map("billing_rules")
+}
+
+/// Facture – Cristallisation du calcul (Grand Livre).
+/// Jamais de Float pour l'argent : totalAmount en Decimal.
+model Invoice {
+  id        String   @id @default(uuid())
+  patientId String? // Optionnel pour démo / patients externes
+  patient   Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  totalAmount    Decimal   @db.Decimal(10, 2) // Montant total (€)
+  breakdown      Json // Résultat exact du moteur : lignes + amo, amc, amount_patient
+  acts           String[] // Codes actes (ex: ["C"]) pour traçabilité
+  status         String    @default("DRAFT") // DRAFT | VALIDATED | TRANSMITTED | PAID | REJECTED
+  rulesVersion   String // ex: "NGAP_2024" – crucial pour l'audit
+  fseToken       String? // Lot FSE (Feuille de Soins Électronique) – généré à la télétransmission
+  fseGeneratedAt DateTime? // Traçabilité temporelle de la télétransmission
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("invoices")
+}
+
 /// Événement de facturation
 /// Généré automatiquement depuis le Knowledge Graph (Module E+)
 model BillingEvent {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Consultation source
-  consultationId    String
-  consultation      Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
-  
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
   // Codes facturation
-  ghmCode           String?  // Code GHM (Groupe Homogène de Malades)
-  actCode           String?  // Code CCAM
-  actType           String   // Type d'acte médical (CONSULTATION, ACTE_TECHNIQUE, etc.)
-  
+  ghmCode String? // Code GHM (Groupe Homogène de Malades)
+  actCode String? // Code CCAM
+  actType String // Type d'acte médical (CONSULTATION, ACTE_TECHNIQUE, etc.)
+
   // Statut
-  status            String   @default("PENDING") // enum: PENDING, VALIDATED, TRANSMITTED, REJECTED
-  
+  status String @default("PENDING") // enum: PENDING, VALIDATED, TRANSMITTED, REJECTED
+
   // Preuve clinique (référence aux nœuds sémantiques)
-  evidenceNodeIds   String[] // IDs des nœuds sémantiques justificatifs
-  
+  evidenceNodeIds String[] // IDs des nœuds sémantiques justificatifs
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  transmittedAt     DateTime?
-  
-  @@map("billing_events")
+  createdAt     DateTime  @default(now())
+  transmittedAt DateTime?
+
   @@index([consultationId])
   @@index([status])
+  @@map("billing_events")
 }
 
 // ============================================================================
@@ -261,23 +299,23 @@ model BillingEvent {
 
 /// Allergie déclarée par le patient
 model Allergy {
-  id                String   @id @default(cuid())
-  patientId         String
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Substance
-  substance         String   // Nom de la substance
-  snomedCtCode      String?  // Code SNOMED CT
-  
+  substance    String // Nom de la substance
+  snomedCtCode String? // Code SNOMED CT
+
   // Gravité
-  severity          String   // enum: MILD, MODERATE, SEVERE, LIFE_THREATENING
-  
+  severity String // enum: MILD, MODERATE, SEVERE, LIFE_THREATENING
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  source            String?  // Source de l'information (médecin, patient, etc.)
-  
-  @@map("allergies")
+  createdAt DateTime @default(now())
+  source    String? // Source de l'information (médecin, patient, etc.)
+
   @@index([patientId])
+  @@map("allergies")
 }
 
 // ============================================================================
@@ -288,199 +326,199 @@ model Allergy {
 /// Document médical dans le DPI
 /// Centralise toutes les informations du patient
 model MedicalDocument {
-  id                String   @id @default(cuid())
-  patientId         String
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Type de document
-  documentType      String   // enum: ORDONNANCE, COMPTE_RENDU, RESULTAT_EXAMEN, RESULTAT_LABO, IMAGE_MEDICALE, CERTIFICAT, COURRIER
-  title             String
-  
+  documentType String // enum: ORDONNANCE, COMPTE_RENDU, RESULTAT_EXAMEN, RESULTAT_LABO, IMAGE_MEDICALE, CERTIFICAT, COURRIER
+  title        String
+
   // Contenu
-  content           Json     // Contenu structuré selon le type
-  rawContent        String?  // Contenu texte brut si disponible
-  
+  content    Json // Contenu structuré selon le type
+  rawContent String? // Contenu texte brut si disponible
+
   // Métadonnées
-  documentDate      DateTime // Date du document (pas création)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  createdBy         String   // User ID créateur
-  
+  documentDate DateTime // Date du document (pas création)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String // User ID créateur
+
   // Relations
-  consultationId    String?  // Lié à une consultation si applicable
-  consultation      Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
-  
+  consultationId String? // Lié à une consultation si applicable
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
   // Relations inverses
-  prescription      Prescription?
-  medicalReport     MedicalReport?
-  laboratoryResult  LaboratoryResult?
-  medicalImage      MedicalImage?
-  
+  prescription     Prescription?
+  medicalReport    MedicalReport?
+  laboratoryResult LaboratoryResult?
+  medicalImage     MedicalImage?
+
   // Fichiers associés (MinIO)
-  attachments       DocumentAttachment[]
-  
-  @@map("medical_documents")
+  attachments DocumentAttachment[]
+
   @@index([patientId])
   @@index([documentType])
   @@index([documentDate])
   @@index([consultationId])
+  @@map("medical_documents")
 }
 
 /// Pièce jointe (fichier) d'un document médical
 model DocumentAttachment {
-  id                String   @id @default(cuid())
-  documentId        String
-  document          MedicalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  
+  id         String          @id @default(cuid())
+  documentId String
+  document   MedicalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
   // Fichier
-  fileName          String
-  filePath          String   // Chemin MinIO
-  mimeType          String
-  fileSize          Int      // Taille en bytes
-  
+  fileName String
+  filePath String // Chemin MinIO
+  mimeType String
+  fileSize Int // Taille en bytes
+
   // Métadonnées
-  uploadedAt        DateTime @default(now())
-  uploadedBy        String
-  
-  @@map("document_attachments")
+  uploadedAt DateTime @default(now())
+  uploadedBy String
+
   @@index([documentId])
+  @@map("document_attachments")
 }
 
 /// Prescription médicamenteuse (intégrée dans DPI)
 /// Vérifiée par le Module C+ (Gardien Causal)
 model Prescription {
-  id                String   @id @default(cuid())
-  patientId         String
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Médicament
-  medicationName    String
-  atcCode           String?  // Code ATC
-  dosage            String
-  frequency         String
-  duration          String?
-  
+  medicationName String
+  atcCode        String? // Code ATC
+  dosage         String
+  frequency      String
+  duration       String?
+
   // Statut
-  status            String   @default("DRAFT") // enum: DRAFT, VALIDATED, DISPENSED, CANCELLED
-  
+  status String @default("DRAFT") // enum: DRAFT, VALIDATED, DISPENSED, CANCELLED
+
   // Vérification sécurité
-  safetyChecks      Json?    // Résultats des vérifications (interactions, contre-indications)
-  outpassReason     String?  // Justification si outpass d'une alerte
-  
+  safetyChecks  Json? // Résultats des vérifications (interactions, contre-indications)
+  outpassReason String? // Justification si outpass d'une alerte
+
   // Relation document DPI
-  documentId        String?  @unique
-  document          MedicalDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  
+  documentId String?          @unique
+  document   MedicalDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  prescribedBy      String   // User ID du prescripteur
-  
-  @@map("prescriptions")
+  createdAt    DateTime @default(now())
+  prescribedBy String // User ID du prescripteur
+
   @@index([patientId])
   @@index([status])
+  @@map("prescriptions")
 }
 
 /// Compte rendu médical
 model MedicalReport {
-  id                String   @id @default(cuid())
-  patientId         String
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Type
-  reportType        String   // enum: CONSULTATION, HOSPITALISATION, OPERATION, EMERGENCY, SPECIALIST
-  title             String
-  
+  reportType String // enum: CONSULTATION, HOSPITALISATION, OPERATION, EMERGENCY, SPECIALIST
+  title      String
+
   // Contenu structuré
-  chiefComplaint    String?  // Motif consultation
-  history           String?  // Anamnèse
-  examination       String?  // Examen clinique
-  assessment        String?  // Bilan
-  plan              String?  // Plan de soins
-  
+  chiefComplaint String? // Motif consultation
+  history        String? // Anamnèse
+  examination    String? // Examen clinique
+  assessment     String? // Bilan
+  plan           String? // Plan de soins
+
   // Relation document
-  documentId        String?  @unique
-  document          MedicalDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  
+  documentId String?          @unique
+  document   MedicalDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
   // Relation consultation
-  consultationId    String?
-  consultation      Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
-  
+  consultationId String?
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
   // Métadonnées
-  reportDate        DateTime
-  createdAt         DateTime @default(now())
-  createdBy         String
-  
-  @@map("medical_reports")
+  reportDate DateTime
+  createdAt  DateTime @default(now())
+  createdBy  String
+
   @@index([patientId])
   @@index([reportType])
   @@index([reportDate])
+  @@map("medical_reports")
 }
 
 /// Résultat d'examen de laboratoire (LIS)
 model LaboratoryResult {
-  id                String   @id @default(cuid())
-  patientId         String
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Examen
-  testName          String
-  testCode          String?  // Code LOINC
-  resultValue       String   // Valeur du résultat
-  unit              String?  // Unité de mesure
-  referenceRange    String?  // Plage de référence
-  
+  testName       String
+  testCode       String? // Code LOINC
+  resultValue    String // Valeur du résultat
+  unit           String? // Unité de mesure
+  referenceRange String? // Plage de référence
+
   // Statut
-  status            String   // enum: NORMAL, ABNORMAL, CRITICAL, PENDING
-  
+  status String // enum: NORMAL, ABNORMAL, CRITICAL, PENDING
+
   // Métadonnées
-  testDate          DateTime
-  receivedAt        DateTime @default(now())
-  laboratoryName    String?  // Nom du laboratoire
-  
+  testDate       DateTime
+  receivedAt     DateTime @default(now())
+  laboratoryName String? // Nom du laboratoire
+
   // Relation document
-  documentId        String?  @unique
-  document          MedicalDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  
-  @@map("laboratory_results")
+  documentId String?          @unique
+  document   MedicalDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
   @@index([patientId])
   @@index([testDate])
   @@index([status])
+  @@map("laboratory_results")
 }
 
 /// Image médicale (PACS)
 model MedicalImage {
-  id                String   @id @default(cuid())
-  patientId         String
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // DICOM
-  studyInstanceUid  String   // Study Instance UID (DICOM)
-  seriesInstanceUid String?  // Series Instance UID
-  sopInstanceUid    String?  // SOP Instance UID
-  
+  studyInstanceUid  String // Study Instance UID (DICOM)
+  seriesInstanceUid String? // Series Instance UID
+  sopInstanceUid    String? // SOP Instance UID
+
   // Métadonnées DICOM
-  modality          String   // enum: CR, CT, MR, US, NM, PT, MG, DX
+  modality          String // enum: CR, CT, MR, US, NM, PT, MG, DX
   bodyPart          String?
   studyDescription  String?
   seriesDescription String?
-  
+
   // Fichier
-  filePath          String   // Chemin MinIO
-  fileSize          Int
-  
+  filePath String // Chemin MinIO
+  fileSize Int
+
   // Relation document
-  documentId        String?  @unique
-  document          MedicalDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  
+  documentId String?          @unique
+  document   MedicalDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
   // Métadonnées
-  acquisitionDate   DateTime
-  createdAt         DateTime @default(now())
-  
-  @@map("medical_images")
+  acquisitionDate DateTime
+  createdAt       DateTime @default(now())
+
   @@index([patientId])
   @@index([studyInstanceUid])
   @@index([modality])
   @@index([acquisitionDate])
+  @@map("medical_images")
 }
 
 // ============================================================================
@@ -489,24 +527,24 @@ model MedicalImage {
 
 /// Correction capturée pour amélioration du modèle (Module L)
 model FeedbackEvent {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Contexte de la correction
-  entityType        String   // enum: CODING, TRANSCRIPTION, DIAGNOSIS, PRESCRIPTION
-  entityId          String   // ID de l'entité corrigée
-  
+  entityType String // enum: CODING, TRANSCRIPTION, DIAGNOSIS, PRESCRIPTION
+  entityId   String // ID de l'entité corrigée
+
   // Correction
-  originalValue     Json     // Valeur originale (code CIM, transcription, etc.)
-  correctedValue    Json     // Valeur corrigée par le médecin
-  correctionReason  String?  // Raison de la correction
-  
+  originalValue    Json // Valeur originale (code CIM, transcription, etc.)
+  correctedValue   Json // Valeur corrigée par le médecin
+  correctionReason String? // Raison de la correction
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  correctedBy       String   // User ID du médecin
-  
-  @@map("feedback_events")
+  createdAt   DateTime @default(now())
+  correctedBy String // User ID du médecin
+
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@map("feedback_events")
 }
 
 // ============================================================================
@@ -515,77 +553,77 @@ model FeedbackEvent {
 
 /// Rendez-vous médical
 model Appointment {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Patient
-  patientId         String
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Médecin / Professionnel de santé
-  doctorId          String?  // User ID du médecin
-  doctorName        String?  // Nom du médecin (pour flexibilité)
-  
+  doctorId   String? // User ID du médecin
+  doctorName String? // Nom du médecin (pour flexibilité)
+
   // Dates
-  appointmentDate   DateTime
-  startTime         DateTime
-  endTime           DateTime
-  duration          Int      // Durée en minutes
-  
+  appointmentDate DateTime
+  startTime       DateTime
+  endTime         DateTime
+  duration        Int // Durée en minutes
+
   // Type
-  appointmentType   String   // enum: CONSULTATION, EXAMEN, SUIVI, URGENCE
-  title             String?
-  description       String?
-  
+  appointmentType String // enum: CONSULTATION, EXAMEN, SUIVI, URGENCE
+  title           String?
+  description     String?
+
   // Statut
-  status            String   @default("SCHEDULED") // enum: SCHEDULED, CONFIRMED, CANCELLED, COMPLETED, NO_SHOW
-  
+  status String @default("SCHEDULED") // enum: SCHEDULED, CONFIRMED, CANCELLED, COMPLETED, NO_SHOW
+
   // Location
-  location          String?  // Salle, cabinet, etc.
-  
+  location String? // Salle, cabinet, etc.
+
   // Relations
-  consultationId    String?  @unique // Consultation créée depuis ce rendez-vous
-  consultation      Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
-  
+  consultationId String?       @unique // Consultation créée depuis ce rendez-vous
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
   // Rappels
-  reminders         AppointmentReminder[]
-  
+  reminders AppointmentReminder[]
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  createdBy         String   // User ID créateur
-  cancelledAt       DateTime?
-  cancelledBy       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  createdBy          String // User ID créateur
+  cancelledAt        DateTime?
+  cancelledBy        String?
   cancellationReason String?
-  
-  @@map("appointments")
+
+  @@unique([doctorId, startTime, endTime]) // Prévention double réservation
   @@index([patientId])
   @@index([doctorId])
   @@index([appointmentDate])
   @@index([status])
-  @@unique([doctorId, startTime, endTime]) // Prévention double réservation
+  @@map("appointments")
 }
 
 /// Rappel de rendez-vous
 model AppointmentReminder {
-  id                String   @id @default(cuid())
-  appointmentId     String
-  appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
   // Type de rappel
-  reminderType      String   // enum: SMS, EMAIL, PUSH, IN_APP
-  reminderTime      DateTime // Quand envoyer le rappel
-  
+  reminderType String // enum: SMS, EMAIL, PUSH, IN_APP
+  reminderTime DateTime // Quand envoyer le rappel
+
   // Statut
-  status            String   @default("PENDING") // enum: PENDING, SENT, FAILED, CANCELLED
-  sentAt            DateTime?
-  
+  status String    @default("PENDING") // enum: PENDING, SENT, FAILED, CANCELLED
+  sentAt DateTime?
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  
-  @@map("appointment_reminders")
+  createdAt DateTime @default(now())
+
   @@index([appointmentId])
   @@index([reminderTime])
   @@index([status])
+  @@map("appointment_reminders")
 }
 
 // ============================================================================
@@ -594,83 +632,83 @@ model AppointmentReminder {
 
 /// Message interne sécurisé
 model InternalMessage {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Participants
-  senderId          String   // User ID expéditeur
-  recipientId       String?  // User ID destinataire (null = message groupe)
-  
+  senderId    String // User ID expéditeur
+  recipientId String? // User ID destinataire (null = message groupe)
+
   // Groupe
-  threadId          String?  // ID du thread de conversation
-  thread            MessageThread? @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  
+  threadId String? // ID du thread de conversation
+  thread   MessageThread? @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
   // Contenu
-  subject           String?
-  content           String
-  messageType       String   @default("TEXT") // enum: TEXT, FILE, SYSTEM, ALERT
-  
+  subject     String?
+  content     String
+  messageType String  @default("TEXT") // enum: TEXT, FILE, SYSTEM, ALERT
+
   // Statut
-  status            String   @default("SENT") // enum: DRAFT, SENT, DELIVERED, READ, ARCHIVED
-  
+  status String @default("SENT") // enum: DRAFT, SENT, DELIVERED, READ, ARCHIVED
+
   // Fichiers joints
-  attachments       MessageAttachment[]
-  
+  attachments MessageAttachment[]
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  readAt            DateTime?
-  archivedAt        DateTime?
-  
-  @@map("internal_messages")
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
+  archivedAt DateTime?
+
   @@index([senderId])
   @@index([recipientId])
   @@index([threadId])
   @@index([status])
   @@index([createdAt])
+  @@map("internal_messages")
 }
 
 /// Thread de conversation (groupe)
 model MessageThread {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Informations
-  name              String?
-  threadType        String   @default("DIRECT") // enum: DIRECT, GROUP, TEAM, SERVICE
-  description       String?
-  
+  name        String?
+  threadType  String  @default("DIRECT") // enum: DIRECT, GROUP, TEAM, SERVICE
+  description String?
+
   // Participants
-  participantIds    String[] // User IDs participants
-  
+  participantIds String[] // User IDs participants
+
   // Messages
-  messages          InternalMessage[]
-  
+  messages InternalMessage[]
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  lastMessageAt     DateTime?
-  createdBy         String
-  
-  @@map("message_threads")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastMessageAt DateTime?
+  createdBy     String
+
   @@index([threadType])
   @@index([lastMessageAt])
+  @@map("message_threads")
 }
 
 /// Pièce jointe d'un message
 model MessageAttachment {
-  id                String   @id @default(cuid())
-  messageId         String
-  message           InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  
+  id        String          @id @default(cuid())
+  messageId String
+  message   InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
   // Fichier
-  fileName          String
-  filePath          String   // Chemin MinIO
-  mimeType          String
-  fileSize          Int
-  
+  fileName String
+  filePath String // Chemin MinIO
+  mimeType String
+  fileSize Int
+
   // Métadonnées
-  uploadedAt        DateTime @default(now())
-  
-  @@map("message_attachments")
+  uploadedAt DateTime @default(now())
+
   @@index([messageId])
+  @@map("message_attachments")
 }
 
 // ============================================================================
@@ -679,116 +717,116 @@ model MessageAttachment {
 
 /// Membre du personnel
 model StaffMember {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Identité
-  firstName         String
-  lastName          String
-  email             String   @unique
-  phone             String?
-  
+  firstName String
+  lastName  String
+  email     String  @unique
+  phone     String?
+
   // Profession
-  role              String   // enum: DOCTOR, NURSE, SECRETARY, ADMIN, TECHNICIAN
-  speciality        String?  // Spécialité médicale
-  qualifications    String[] // Qualifications/certifications
-  
+  role           String // enum: DOCTOR, NURSE, SECRETARY, ADMIN, TECHNICIAN
+  speciality     String? // Spécialité médicale
+  qualifications String[] // Qualifications/certifications
+
   // Statut
-  status            String   @default("ACTIVE") // enum: ACTIVE, INACTIVE, ON_LEAVE, TERMINATED
-  
+  status String @default("ACTIVE") // enum: ACTIVE, INACTIVE, ON_LEAVE, TERMINATED
+
   // Métadonnées
-  hiredDate         DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  hiredDate DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
   // Relations
-  shifts            Shift[]
-  leaves            Leave[]
-  schedules         Schedule[]
-  
-  @@map("staff_members")
+  shifts    Shift[]
+  leaves    Leave[]
+  schedules Schedule[]
+
   @@index([role])
   @@index([status])
+  @@map("staff_members")
 }
 
 /// Poste de travail / Shift
 model Shift {
-  id                String   @id @default(cuid())
-  staffMemberId     String
-  staffMember       StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
-  
+  id            String      @id @default(cuid())
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
   // Dates
-  startDate         DateTime
-  endDate           DateTime
-  startTime         DateTime
-  endTime           DateTime
-  
+  startDate DateTime
+  endDate   DateTime
+  startTime DateTime
+  endTime   DateTime
+
   // Type
-  shiftType         String   // enum: DAY, NIGHT, WEEKEND, HOLIDAY, ON_CALL
-  location          String?  // Lieu de travail
-  
+  shiftType String // enum: DAY, NIGHT, WEEKEND, HOLIDAY, ON_CALL
+  location  String? // Lieu de travail
+
   // Statut
-  status            String   @default("SCHEDULED") // enum: SCHEDULED, CONFIRMED, CANCELLED, COMPLETED
-  
+  status String @default("SCHEDULED") // enum: SCHEDULED, CONFIRMED, CANCELLED, COMPLETED
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  createdBy         String
-  
-  @@map("shifts")
+  createdAt DateTime @default(now())
+  createdBy String
+
   @@index([staffMemberId])
   @@index([startDate])
   @@index([status])
+  @@map("shifts")
 }
 
 /// Congé / Absence
 model Leave {
-  id                String   @id @default(cuid())
-  staffMemberId     String
-  staffMember       StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
-  
+  id            String      @id @default(cuid())
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
   // Dates
-  startDate         DateTime
-  endDate           DateTime
-  
+  startDate DateTime
+  endDate   DateTime
+
   // Type
-  leaveType         String   // enum: ANNUAL, SICK, MATERNITY, PATERNITY, UNPAID, OTHER
-  reason            String?
-  
+  leaveType String // enum: ANNUAL, SICK, MATERNITY, PATERNITY, UNPAID, OTHER
+  reason    String?
+
   // Statut
-  status            String   @default("PENDING") // enum: PENDING, APPROVED, REJECTED, CANCELLED
-  
+  status String @default("PENDING") // enum: PENDING, APPROVED, REJECTED, CANCELLED
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  requestedBy       String
-  approvedBy        String?
-  approvedAt        DateTime?
-  
-  @@map("leaves")
+  createdAt   DateTime  @default(now())
+  requestedBy String
+  approvedBy  String?
+  approvedAt  DateTime?
+
   @@index([staffMemberId])
   @@index([startDate])
   @@index([status])
+  @@map("leaves")
 }
 
 /// Planning hebdomadaire/mensuel
 model Schedule {
-  id                String   @id @default(cuid())
-  staffMemberId     String
-  staffMember       StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
-  
+  id            String      @id @default(cuid())
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
   // Période
-  startDate         DateTime
-  endDate           DateTime
-  
+  startDate DateTime
+  endDate   DateTime
+
   // Planning (JSON structuré)
-  scheduleData      Json     // Planning détaillé
-  
+  scheduleData Json // Planning détaillé
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  createdBy         String
-  
-  @@map("schedules")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String
+
   @@index([staffMemberId])
   @@index([startDate])
+  @@map("schedules")
 }
 
 // ============================================================================
@@ -797,82 +835,82 @@ model Schedule {
 
 /// Article en stock (pharmacie, matériel médical)
 model StockItem {
-  id                String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Identité
-  name              String
-  description       String?
-  sku               String   @unique // Code article
-  
+  name        String
+  description String?
+  sku         String  @unique // Code article
+
   // Catégorie
-  category          String   // enum: MEDICATION, MEDICAL_SUPPLY, EQUIPMENT, CONSUMABLE
-  subCategory       String?
-  
+  category    String // enum: MEDICATION, MEDICAL_SUPPLY, EQUIPMENT, CONSUMABLE
+  subCategory String?
+
   // Stock
-  currentQuantity   Int      @default(0)
-  minQuantity       Int      @default(0) // Seuil d'alerte
-  maxQuantity       Int?
-  unit              String   @default("unit") // Unité de mesure
-  
+  currentQuantity Int    @default(0)
+  minQuantity     Int    @default(0) // Seuil d'alerte
+  maxQuantity     Int?
+  unit            String @default("unit") // Unité de mesure
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  movements         StockMovement[]
-  alerts            StockAlert[]
-  
-  @@map("stock_items")
+  movements StockMovement[]
+  alerts    StockAlert[]
+
   @@index([category])
   @@index([sku])
+  @@map("stock_items")
 }
 
 /// Mouvement de stock (entrée, sortie, ajustement)
 model StockMovement {
-  id                String   @id @default(cuid())
-  stockItemId       String
-  stockItem         StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
-  
+  id          String    @id @default(cuid())
+  stockItemId String
+  stockItem   StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
   // Type
-  movementType      String   // enum: IN, OUT, ADJUSTMENT, TRANSFER
-  quantity          Int
-  
+  movementType String // enum: IN, OUT, ADJUSTMENT, TRANSFER
+  quantity     Int
+
   // Référence
-  reference         String?  // Référence commande, prescription, etc.
-  referenceType     String?  // Type de référence
-  
+  reference     String? // Référence commande, prescription, etc.
+  referenceType String? // Type de référence
+
   // Métadonnées
-  movementDate      DateTime @default(now())
-  createdAt         DateTime @default(now())
-  createdBy         String
-  
-  @@map("stock_movements")
+  movementDate DateTime @default(now())
+  createdAt    DateTime @default(now())
+  createdBy    String
+
   @@index([stockItemId])
   @@index([movementDate])
   @@index([movementType])
+  @@map("stock_movements")
 }
 
 /// Alerte de stock (rupture, seuil bas)
 model StockAlert {
-  id                String   @id @default(cuid())
-  stockItemId       String
-  stockItem         StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
-  
+  id          String    @id @default(cuid())
+  stockItemId String
+  stockItem   StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
   // Type
-  alertType         String   // enum: LOW_STOCK, OUT_OF_STOCK, EXPIRY_WARNING
-  severity          String   // enum: LOW, MEDIUM, HIGH, CRITICAL
-  message           String
-  
+  alertType String // enum: LOW_STOCK, OUT_OF_STOCK, EXPIRY_WARNING
+  severity  String // enum: LOW, MEDIUM, HIGH, CRITICAL
+  message   String
+
   // Statut
-  status            String   @default("ACTIVE") // enum: ACTIVE, ACKNOWLEDGED, RESOLVED
-  
+  status String @default("ACTIVE") // enum: ACTIVE, ACKNOWLEDGED, RESOLVED
+
   // Métadonnées
-  createdAt         DateTime @default(now())
-  acknowledgedAt    DateTime?
-  acknowledgedBy    String?
-  
-  @@map("stock_alerts")
+  createdAt      DateTime  @default(now())
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+
   @@index([stockItemId])
   @@index([status])
   @@index([alertType])
+  @@map("stock_alerts")
 }

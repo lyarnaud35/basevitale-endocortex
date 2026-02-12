@@ -1,14 +1,17 @@
 import { Module } from '@nestjs/common';
 import { BillingController } from './billing.controller';
+import { BillingAdminController } from './billing-admin.controller';
 import { BillingService } from './billing.service';
+import { BillingRulesService } from './billing-rules.service';
+import { PatientContextService } from './patient-context.service';
 
 /**
- * BillingModule – Squelette (coquille vide).
- * Module E+ Facturation. Tuyaux posés, logique à brancher plus tard.
+ * BillingModule – Moteur d’inférence contextuelle (Réacteur Fiscal).
+ * Module E+ Facturation. Contexte patient + règles NGAP.
  */
 @Module({
-  controllers: [BillingController],
-  providers: [BillingService],
-  exports: [BillingService],
+  controllers: [BillingController, BillingAdminController],
+  providers: [BillingService, BillingRulesService, PatientContextService],
+  exports: [BillingService, BillingRulesService],
 })
 export class BillingModule {}
