@@ -24,6 +24,8 @@ export interface SimulateBillingResult {
   amo: number;
   amc: number;
   amount_patient: number;
+  /** Règles appliquées (pour affichage démo / audit). Ex. ["ALD 100%", "Tarif Conventionné Secteur 1"] */
+  rulesApplied: string[];
   message?: string;
   patient_context?: { patientId: string; age: number; coverage?: number };
 }
@@ -141,12 +143,24 @@ export class BillingService {
 
     const engineResult = runEngine(ctx, this.billingRulesService.getRules());
 
+    const rulesApplied: string[] = [];
+    if (engineResult.modifier_applied) {
+      rulesApplied.push('ALD 100%');
+    }
+    rulesApplied.push('Tarif Conventionné Secteur 1');
+    for (const line of engineResult.breakdown) {
+      if (line.ruleId && !rulesApplied.includes(line.ruleId)) {
+        rulesApplied.push(line.ruleId);
+      }
+    }
+
     const result: SimulateBillingResult = {
       total: engineResult.total,
       breakdown: engineResult.breakdown,
       amo: engineResult.amo,
       amc: engineResult.amc,
       amount_patient: engineResult.amount_patient,
+      rulesApplied,
     };
 
     if (engineResult.breakdown.length > 1) {

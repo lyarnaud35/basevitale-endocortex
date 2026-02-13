@@ -139,11 +139,100 @@ Exemple d’affichage :
 
 ---
 
+## Facturation (NGAP) – Module Billing
+
+### Concept
+
+Le moteur de facturation est **Server-Driven** (Ghost Protocol). Le backend calcule les montants et les parts (AMO / AMC / patient) ; règles ALD et arrondis à 2 décimales côté API.
+
+### `useBillingSimulation(acts, options?)`
+
+Hook pour afficher en temps réel le total et le détail Sécu/Mutuelle à partir d’une liste de codes actes (C, V, MD, G, etc.).
+
+```tsx
+import { setBaseUrl, useBillingSimulation } from '@basevitale/ghost-sdk';
+
+setBaseUrl(process.env.NEXT_PUBLIC_API_URL ?? '');
+
+function Caisse() {
+  const [acts, setActs] = useState<string[]>(['C', 'K']);
+  const { total, partSecu, partPatient, rulesApplied, loading, error } = useBillingSimulation(
+    acts,
+    { patientId: 'scenario-jean-peuplu' }
+  );
+
+  return (
+    <>
+      {loading && <span>Calcul…</span>}
+      {!loading && (
+        <>
+          <p>Total : {total.toFixed(2)} €</p>
+          <p>Part Sécu : {(partSecu ?? 0).toFixed(2)} €</p>
+          <p>Reste à charge : {(partPatient ?? 0).toFixed(2)} €</p>
+          <p>Règles : {rulesApplied?.join(', ')}</p>
+        </>
+      )}
+    </>
+  );
+}
+```
+
+**Retour :** `{ total, partSecu, partMutuelle, partPatient, rulesApplied, loading, error, data, refetch }`. Ex. scénario Jean + C : `amount_patient: 0`, `rulesApplied: ["ALD 100%"]`.
+
+**Scénarios de démo :** `scenario-jean-peuplu` (ALD 100 %), `scenario-paul-normal` (70 % Sécu / 30 % patient). Actes : C, V, K.
+
+**Mise à jour des règles NGAP :** Modifier `apps/api/src/billing/rules/ngap_2024.json`, puis redémarrer l’API (ou appeler `POST /api/admin/rules/reload`). Le service réinjecte le JSON au chargement.
+
+---
+
+## Médicaments (Deep Roots / BDPM)
+
+### `useDrugSearch()`
+
+Hook avec debounce (300 ms) pour la recherche hybride (nom commercial + substance). Idéal pour un champ de saisie type “Caisse”.
+
+```tsx
+import { useDrugSearch } from '@basevitale/ghost-sdk';
+
+function MedicamentInput() {
+  const { search, results, isLoading, error } = useDrugSearch({ limit: 20 });
+
+  return (
+    <>
+      <input placeholder="Doliprane, Paracéta…" onChange={(e) => search(e.target.value)} />
+      {isLoading && <span>Recherche…</span>}
+      <ul>
+        {results.map((d) => (
+          <li key={d.id}>
+            {d.label} <span className="badge">{d.type === 'Brand' ? 'Marque' : 'Générique'}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+**Retour :** `{ search, query, debouncedQuery, results, isLoading, error, options }`. `options` = `{ value: id, label }[]` pour un `<Select />`.
+
+### `usePosologyTemplate(cis)`
+
+Template de posologie (unité, défaut, instructions) pour un CIS donné. À utiliser quand l’utilisateur a sélectionné un médicament.
+
+```tsx
+const { data } = usePosologyTemplate(selectedCis);
+// data: { unit: 'cp', default: '1 matin, 1 soir', max: '4/j', instructions: '…' }
+```
+
+---
+
 ## Autres exports
 
 - **`setBaseUrl(url)`** / **`getBaseUrl()`** – Configuration de l’URL de l’API.
 - **`analyzeFullContext(body)`** – Appel direct à `POST /api/orchestrator/analyze` (sans debounce).
 - **`useGhostMachine`** – Hook pour les machines Ghost via SSE.
 - **`useGetPatientDashboardState`** – Hook React Query pour le dashboard patient.
+- **`useFiscalPrediction(acts, options?)`** – Prédiction fiscale (détail complet) ; `useBillingSimulation` en est un alias simplifié.
+- **`useInvoiceLifecycle(invoiceId)`** – Cycle de vie facture (FSM) : statut, `availableActions`, `transition(action)`.
 
-Types : `SecurityStatus`, `UseConsultationScannerOptions`, `UseConsultationScannerResult`, `AnalyzeFullContextResponse`, `AnalyzeFullContextBody`, etc.
+Types : `SecurityStatus`, `UseConsultationScannerOptions`, `UseConsultationScannerResult`, `FiscalPredictionResult`, `DrugSearchResult`, `PosologyTemplate`, `AnalyzeFullContextResponse`, `AnalyzeFullContextBody`, etc.

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { SecurityGuardWsState, SecurityInputPayload, OverridePayload } from '@basevitale/shared';
 import { PrescriptionGuardMachine } from './prescription-guard.machine';
+import { GuardianService } from '../knowledge-graph/guardian.service';
 
 export interface PrescriptionGuardSessionEntry {
   machine: PrescriptionGuardMachine;
@@ -25,6 +26,8 @@ const EMPTY_STATE: SecurityGuardWsState = {
 export class PrescriptionGuardService implements OnModuleDestroy {
   private readonly logger = new Logger(PrescriptionGuardService.name);
   private readonly registry = new Map<string, PrescriptionGuardSessionEntry>();
+
+  constructor(private readonly guardian: GuardianService) {}
 
   private validateSessionId(sessionId: string): boolean {
     return (
@@ -53,9 +56,27 @@ export class PrescriptionGuardService implements OnModuleDestroy {
     return entry.machine;
   }
 
-  checkPrescription(sessionId: string, payload: SecurityInputPayload): SecurityGuardWsState {
+  async checkPrescription(sessionId: string, payload: SecurityInputPayload): Promise<SecurityGuardWsState> {
     const machine = this.getOrCreateMachine(sessionId);
     if (!machine) return EMPTY_STATE;
+
+    const patientId = payload.patientContext?.patientId as string | undefined;
+    const drugId = payload.drugId?.trim() ?? '';
+
+    if (patientId && drugId) {
+      try {
+        const result = await this.guardian.checkMedicationsAgainstAllergies(patientId, [{ name: drugId }]);
+        if (!result.safe && result.conflicts.length > 0) {
+          return machine.checkPrescription(payload.drugId, payload.patientContext, {
+            safe: false,
+            blockReason: result.conflicts[0].reason,
+          });
+        }
+      } catch (e) {
+        this.logger.warn('Guardian check failed, fallback to keyword', (e as Error)?.message);
+      }
+    }
+
     return machine.checkPrescription(payload.drugId, payload.patientContext);
   }
 

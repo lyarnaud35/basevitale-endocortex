@@ -6,19 +6,22 @@ import { useConsultationScanner, setBaseUrl } from '@basevitale/ghost-sdk';
 /**
  * SHOWROOM CABINET – Preuve de vie du Cerveau Unifié (C+ et B+).
  *
- * Scénarios de test (à reproduire manuellement ou via "Charger Scénario Crash") :
- * 1. "Patient 50 ans, fièvre, toux. Prescription : Amoxicilline."
- *    → Attendu : Alerte C+ (BLOCKED si allergie) + Codes B+ (ex. R50.9, R05, J11).
- * 2. "Patient présente une forte fièvre et des courbatures. Prescription de Pénicilline alors qu'il est allergique connu."
- *    → Attendu : BLOCKED (rouge) + suggestions selon symptômes.
- * 3. "Doliprane pour céphalée."
- *    → Attendu : SAFE (vert) + code G43.9 ou similaire selon mock.
+ * Scénarios :
+ * - Crash Pénicilline : BLOCKED (mots-clés).
+ * - Paracétamol : patient démo allergique → taper "Prescription Doliprane" ou "Prescription Efferalgan" → ROUGE (graphe).
  */
 const SCENARIO_CRASH =
   "Patient présente une forte fièvre et des courbatures. Prescription de Pénicilline alors qu'il est allergique connu.";
 
+const SCENARIO_PARACETAMOL = 'Prescription Doliprane';
+const DEMO_PATIENT_PARACETAMOL_ID = 'demo-patient-paracetamol';
+
+const SCENARIO_AUGMENTIN = 'Prescription Augmentin';
+const DEMO_PATIENT_CLAVULANIQUE_ID = 'demo-patient-clavulanique';
+
 export default function CabinetShowroom() {
   const [text, setText] = useState('');
+  const [patientId, setPatientId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const apiUrl =
@@ -28,9 +31,22 @@ export default function CabinetShowroom() {
   }, []);
 
   const { securityState, suggestions, isScanning, error } =
-    useConsultationScanner(text, { enabled: true });
+    useConsultationScanner(text, { enabled: true, patientId });
 
-  const loadCrashScenario = () => setText(SCENARIO_CRASH);
+  const loadCrashScenario = () => {
+    setPatientId(undefined);
+    setText(SCENARIO_CRASH);
+  };
+
+  const loadParacetamolScenario = () => {
+    setPatientId(DEMO_PATIENT_PARACETAMOL_ID);
+    setText(SCENARIO_PARACETAMOL);
+  };
+
+  const loadAugmentinScenario = () => {
+    setPatientId(DEMO_PATIENT_CLAVULANIQUE_ID);
+    setText(SCENARIO_AUGMENTIN);
+  };
 
   return (
     <div className="p-8 max-w-5xl mx-auto font-sans">
@@ -51,17 +67,36 @@ export default function CabinetShowroom() {
         className="w-full h-32 p-3 border rounded-lg mb-4 resize-y"
       />
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={loadCrashScenario}
           className="px-3 py-1.5 text-sm bg-amber-100 border border-amber-400 text-amber-800 rounded hover:bg-amber-200"
         >
-          Charger Scénario Crash
+          Scénario Pénicilline
         </button>
-        <span className="ml-2 text-xs text-gray-500">
-          (remplit la zone avec le scénario allergie Pénicilline)
-        </span>
+        <button
+          type="button"
+          onClick={loadParacetamolScenario}
+          className="px-3 py-1.5 text-sm bg-rose-100 border border-rose-400 text-rose-800 rounded hover:bg-rose-200"
+        >
+          Scénario Paracétamol (Doliprane / Efferalgan)
+        </button>
+        <button
+          type="button"
+          onClick={loadAugmentinScenario}
+          className="px-3 py-1.5 text-sm bg-violet-100 border border-violet-400 text-violet-800 rounded hover:bg-violet-200"
+        >
+          Scénario Augmentin (allergie Acide clavulanique)
+        </button>
+        {patientId && (
+          <span className="text-xs text-gray-500">
+            Patient : {patientId}
+            {patientId === DEMO_PATIENT_CLAVULANIQUE_ID && ' — Augmentin → ROUGE'}
+            {patientId === DEMO_PATIENT_PARACETAMOL_ID && ' — Doliprane / Efferalgan → ROUGE'}
+            {patientId === 'scenario-jean-peuplu' && ' — Amoxicilline → ROUGE'}
+          </span>
+        )}
       </div>
 
       {error && (

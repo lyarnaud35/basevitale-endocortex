@@ -55,7 +55,7 @@ export class SecurityGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('check_prescription')
-  handleCheckPrescription(
+  async handleCheckPrescription(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: SecurityInputPayload,
   ) {
@@ -65,7 +65,7 @@ export class SecurityGateway implements OnGatewayConnection, OnGatewayDisconnect
       drugId: typeof payload?.drugId === 'string' ? payload.drugId : '',
       patientContext: payload?.patientContext,
     };
-    const state = this.guard.checkPrescription(sessionId, safe);
+    const state = await this.guard.checkPrescription(sessionId, safe);
     this.server.to(sessionId).emit('state_updated', state);
   }
 

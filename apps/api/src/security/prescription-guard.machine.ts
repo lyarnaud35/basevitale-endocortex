@@ -39,7 +39,11 @@ export class PrescriptionGuardMachine {
   }
 
   /** Vérification d’un médicament : IDLE → ANALYZING → SECURE ou LOCKED. */
-  checkPrescription(drugId: string, patientContext?: Record<string, unknown>): SecurityGuardWsState {
+  checkPrescription(
+    drugId: string,
+    patientContext?: Record<string, unknown>,
+    guardianResult?: { safe: boolean; blockReason?: string },
+  ): SecurityGuardWsState {
     if (this.state !== 'IDLE' && this.state !== 'SECURE' && this.state !== 'OVERRIDE_PENDING') {
       return this.buildSnapshot();
     }
@@ -49,6 +53,12 @@ export class PrescriptionGuardMachine {
     this.context.patientContext = patientContext ?? null;
     this.context.blockReason = null;
     this.context.overrideReason = null;
+
+    if (guardianResult && !guardianResult.safe && guardianResult.blockReason) {
+      this.state = 'LOCKED';
+      this.context.blockReason = guardianResult.blockReason;
+      return this.buildSnapshot();
+    }
 
     const text = [drugId, JSON.stringify(patientContext ?? {})].join(' ').toLowerCase();
     const hasAllergy = ALLERGY_KEYWORDS.some((kw) => text.includes(kw));

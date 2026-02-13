@@ -1,31 +1,12 @@
 [
-  {
-    "id": "CONSULTATION_BASE",
-    "type": "line",
-    "trigger": "C",
-    "price": 26.50,
-    "part_secu": 0.7,
-    "conditions": [],
-    "label": "Consultation (C)"
-  },
-  {
-    "id": "MAJORATION_ENFANT_MEG",
-    "type": "line",
-    "trigger": "C",
-    "price": 5.00,
-    "part_secu": 1.0,
-    "conditions": [
-      { "fact": "patient.age", "operator": "lessThan", "value": 6 }
-    ],
-    "label": "Majoration Enfant (-6 ans)",
-    "ruleId": "MEG"
-  },
-  {
-    "id": "CMU_TIERS_PAYANT",
-    "type": "modifier",
-    "conditions": [
-      { "fact": "patient.coverage", "operator": "equal", "value": 1 }
-    ],
-    "effect": "patient_pays_zero"
-  }
+  {"id":"CONSULTATION_BASE","type":"line","trigger":"C","price":26.5,"part_secu":0.7,"conditions":[],"label":"Consultation (C)"},
+  {"id":"CONSULTATION_CS","type":"line","trigger":"CS","price":26.5,"part_secu":0.7,"conditions":[],"label":"Consultation secteur 2 (CS)"},
+  {"id":"G_MAJORE","type":"line","trigger":"G","price":26.5,"part_secu":0.7,"conditions":[],"label":"Consultation G"},
+  {"id":"G_CS","type":"line","trigger":"GS","price":26.5,"part_secu":0.7,"conditions":[],"label":"Consultation GS"},
+  {"id":"VISITE","type":"line","trigger":"V","price":33,"part_secu":0.7,"conditions":[],"label":"Visite (V)"},
+  {"id":"VISITE_CS","type":"line","trigger":"VS","price":33,"part_secu":0.7,"conditions":[],"label":"Visite secteur 2 (VS)"},
+  {"id":"ACTE_TECHNIQUE_K","type":"line","trigger":"K","price":1.92,"part_secu":0.7,"conditions":[],"label":"Acte technique (K)"},
+  {"id":"MAJORATION_DIMANCHE","type":"line","trigger":"MD","price":19.06,"part_secu":0.7,"conditions":[],"label":"Majoration dimanche (MD)"},
+  {"id":"MAJORATION_ENFANT_MEG","type":"line","trigger":"C","price":5,"part_secu":1,"conditions":[{"fact":"patient.age","operator":"lessThan","value":6}],"label":"Majoration Enfant (-6 ans)","ruleId":"MEG"},
+  {"id":"CMU_TIERS_PAYANT","type":"modifier","conditions":[{"fact":"patient.coverage","operator":"equal","value":1}],"effect":"patient_pays_zero"}
 ]

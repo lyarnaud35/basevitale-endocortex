@@ -53,7 +53,7 @@ export class ConsultationOrchestratorService {
     const sessionId = `orch-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
     try {
-      const securityCheck = this.guard.checkPrescription(sessionId, {
+      const securityCheck = await this.guard.checkPrescription(sessionId, {
         drugId,
         patientContext,
       });
@@ -116,9 +116,7 @@ export class ConsultationOrchestratorService {
     try {
       const [suggestions, security] = await Promise.all([
         Promise.resolve(this.codingSimulator.suggestCodes(t)),
-        Promise.resolve(
-          this.guard.checkPrescription(sessionId, { drugId, patientContext }),
-        ),
+        this.guard.checkPrescription(sessionId, { drugId, patientContext }),
       ]);
       return { security, suggestions };
     } finally {
@@ -126,12 +124,16 @@ export class ConsultationOrchestratorService {
     }
   }
 
-  /** Mock : extrait un médicament depuis le texte pour le Gardien (C+). */
+  /** Extrait le médicament depuis le texte pour le Gardien (C+) / graphe. */
   private extractDrugFromText(text: string): string {
     const lower = text.toLowerCase();
+    if (/\baugmentin\b/.test(lower)) return 'Augmentin';
     if (/\b(penicilline|pénicilline|amoxicilline|penicillin)\b/.test(lower))
       return 'Pénicilline';
-    if (/\b(doliprane|paracetamol|paracétamol)\b/.test(lower)) return 'Doliprane';
+    if (/\bdoliprane\b/.test(lower)) return 'Doliprane';
+    if (/\befferalgan\b/.test(lower)) return 'Efferalgan';
+    if (/\bdafalgan\b/.test(lower)) return 'Dafalgan';
+    if (/\bparacetamol\b/.test(lower) || /\bparacétamol\b/.test(lower)) return 'Paracétamol';
     return '';
   }
 }

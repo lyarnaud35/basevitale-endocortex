@@ -14,6 +14,7 @@ export * from './contracts/security-ws-events';
 export * from './contracts/coding-machine.schema';
 export * from './contracts/coding-ws-events';
 export * from './contracts/dashboard-state.schema';
+export * from './contracts/drug.schema';
 
 // Mocks (tests / démo)
 export * from './mocks/patient-zero';

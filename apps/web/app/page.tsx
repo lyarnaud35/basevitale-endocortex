@@ -31,9 +31,7 @@ export default function Home() {
           token={process.env.NEXT_PUBLIC_SCRIBE_TOKEN ?? 'test-token'}
           patientId="test-patient-123"
           backendUrl={typeof window !== 'undefined' ? `${window.location.origin}/api` : 'http://localhost:3000/api'}
-          onComplete={(data) =>
-            console.log('SUCCESS - DONNÉES REÇUES POUR BEN:', data)
-          }
+          onComplete={() => {}}
         />
       </main>
     </div>

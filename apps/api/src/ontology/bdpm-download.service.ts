@@ -41,12 +41,20 @@ export class BdpmDownloadService {
   }
 
   /**
-   * Télécharge CIS et CIS_COMPO dans outputDir.
+   * Télécharge CIS, CIS_COMPO et CIS_CIP (présentations / CIP7-CIP13) dans outputDir.
    */
-  async downloadAll(outputDir: string = BDPM_DEFAULT_DOWNLOAD_DIR): Promise<{ cis: string; cisCompo: string }> {
+  async downloadAll(
+    outputDir: string = BDPM_DEFAULT_DOWNLOAD_DIR,
+  ): Promise<{ cis: string; cisCompo: string; cisCip?: string }> {
     const cis = await this.downloadFile('CIS', outputDir);
     const cisCompo = await this.downloadFile('CIS_COMPO', outputDir);
-    return { cis, cisCompo };
+    let cisCip: string | undefined;
+    try {
+      cisCip = await this.downloadFile('CIS_CIP', outputDir);
+    } catch (e) {
+      this.logger.warn('CIS_CIP non téléchargé (optionnel): ' + (e instanceof Error ? e.message : String(e)));
+    }
+    return { cis, cisCompo, cisCip };
   }
 
   /**

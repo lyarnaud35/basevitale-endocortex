@@ -34,6 +34,7 @@ apps/web/.next/
 # BDPM / Ontology (données téléchargées ANSM)
 data/
 apps/api/data/
+apps/api/src/scripts/ingestion/data/*.txt
 
 # Environment
 .env

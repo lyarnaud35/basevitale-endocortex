@@ -5,12 +5,14 @@
 
 export const BDPM_BASE_URL = 'https://bdpmt.ansm.sante.fr/download/file';
 
-/** Fichiers nécessaires pour (Medicament)-[:A_POUR_SUBSTANCE]->(Molecule) */
+/** Fichiers nécessaires pour (Medicament)-[:A_POUR_SUBSTANCE]->(Molecule) et Packs (CIP). */
 export const BDPM_FILES = {
   /** Spécialités : CIS, dénomination, forme pharmaceutique, statut… */
   CIS: 'CIS_bdpm.txt',
   /** Compositions : CIS, code substance, désignation, dosage, nature (SA/FT) */
   CIS_COMPO: 'CIS_COMPO_bdpm.txt',
+  /** Présentations / conditionnements : CIS, libellé, CIP7, CIP13 (facturation). */
+  CIS_CIP: 'CIS_CIP_bdpm.txt',
 } as const;
 
 /**

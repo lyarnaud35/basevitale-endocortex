@@ -14,6 +14,7 @@ export interface FiscalPredictionResult {
   amo: number;
   amc: number;
   amount_patient: number;
+  rulesApplied: string[];
   message?: string;
   patient_context?: { patientId: string; age: number; coverage?: number };
 }
@@ -71,6 +72,29 @@ export function useFiscalPrediction(
     enabled: enabled && Array.isArray(acts),
     ...rest,
   });
+}
+
+/**
+ * Hook "Billing Simulation" : total + loading (et partSecu / partMutuelle).
+ * Alias orienté produit sur useFiscalPrediction ; se met à jour quand acts (ou patientId/patientAge) change.
+ */
+export function useBillingSimulation(
+  acts: string[],
+  options?: { patientId?: string; patientAge?: number; enabled?: boolean },
+) {
+  const query = useFiscalPrediction(acts, options);
+  const data = query.data;
+  return {
+    total: data?.total ?? 0,
+    partSecu: data?.amo,
+    partMutuelle: data?.amc,
+    partPatient: data?.amount_patient,
+    rulesApplied: data?.rulesApplied ?? [],
+    loading: query.isLoading,
+    error: query.error,
+    data: query.data,
+    refetch: query.refetch,
+  };
 }
 
 // =============================================================================

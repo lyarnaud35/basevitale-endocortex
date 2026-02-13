@@ -32,12 +32,21 @@ export {
 export {
   searchDrugs,
   useDrugSearch,
+  useDrugSearchByQuery,
   getDrugSearchQueryKey,
 } from './lib/drugSearch';
 export type { DrugSearchHit } from './lib/drugSearch';
+export type { DrugSearchResult } from '@basevitale/shared';
+export {
+  getPosologyTemplate,
+  getPosologyTemplateQueryKey,
+  usePosologyTemplate,
+} from './lib/posology';
+export type { PosologyTemplate } from './lib/posology';
 export {
   simulateBilling,
   useFiscalPrediction,
+  useBillingSimulation,
   getFiscalPredictionQueryKey,
   fetchInvoiceLifecycle,
   transitionInvoiceStatus,

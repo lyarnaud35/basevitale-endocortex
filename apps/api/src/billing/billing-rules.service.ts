@@ -33,21 +33,13 @@ export class BillingRulesService implements OnModuleInit {
     return DEFAULT_VERSION;
   }
 
-  /** Vide le cache et recharge depuis la DB. Si DB vide, seed depuis le fichier JSON. */
+  /**
+   * Vide le cache et recharge les règles.
+   * Synchronise toujours la DB avec le fichier JSON (code = source de vérité) puis charge en cache.
+   * Ainsi C, V, MD, G, etc. restent à jour après un déploiement.
+   */
   async reloadRules(): Promise<{ version: string; rulesCount: number }> {
     this.cache = null;
-    try {
-      const row = await this.prisma.billingRules.findFirst({
-        orderBy: { updatedAt: 'desc' },
-      });
-      if (row && Array.isArray(row.payload)) {
-        this.cache = { version: row.version, rules: row.payload as unknown as RuleDef[] };
-        this.logger.log(`Règles chargées depuis la DB: ${row.version} (${this.cache.rules.length} règles)`);
-        return { version: row.version, rulesCount: this.cache.rules.length };
-      }
-    } catch (e) {
-      this.logger.warn('Impossible de charger les règles depuis la DB, fallback JSON', e);
-    }
     const fallback = ngap2024Fallback as RuleDef[];
     try {
       const payloadJson = JSON.parse(JSON.stringify(fallback));
@@ -56,13 +48,11 @@ export class BillingRulesService implements OnModuleInit {
         create: { version: DEFAULT_VERSION, payload: payloadJson },
         update: { payload: payloadJson },
       });
-      this.cache = { version: DEFAULT_VERSION, rules: fallback };
-      this.logger.log(`Règles seedées depuis le JSON: ${DEFAULT_VERSION} (${fallback.length} règles)`);
-      return { version: DEFAULT_VERSION, rulesCount: fallback.length };
     } catch (e) {
-      this.logger.warn('Seed des règles en DB échoué, utilisation du fallback en mémoire', e);
-      this.cache = { version: DEFAULT_VERSION, rules: fallback };
-      return { version: DEFAULT_VERSION, rulesCount: fallback.length };
+      this.logger.warn('Sync des règles en DB échouée, utilisation du fallback en mémoire', e);
     }
+    this.cache = { version: DEFAULT_VERSION, rules: fallback };
+    this.logger.log(`Règles chargées: ${DEFAULT_VERSION} (${fallback.length} règles)`);
+    return { version: DEFAULT_VERSION, rulesCount: fallback.length };
   }
 }
