@@ -100,11 +100,20 @@ export class GraphReaderService {
       { patientId },
     );
 
-    return result.records.map((r) => ({
-      code: String(r.get('code') ?? ''),
-      name: String(r.get('name') ?? ''),
-      since: r.get('since') != null ? String(r.get('since')) : null,
-    }));
+    const byKey = new Map<string, ConditionTimelineItem>();
+    for (const r of result.records) {
+      const code = String(r.get('code') ?? '');
+      const name = String(r.get('name') ?? '');
+      const key = `${code}|${name}`;
+      if (byKey.has(key)) continue;
+      const since = r.get('since');
+      byKey.set(key, {
+        code,
+        name,
+        since: since != null ? String(since) : null,
+      });
+    }
+    return Array.from(byKey.values());
   }
 
   private async fetchMedications(patientId: string): Promise<MedicationTimelineItem[]> {

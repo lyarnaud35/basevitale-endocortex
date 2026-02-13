@@ -459,85 +459,96 @@ export class ScribeService {
   /**
    * GET /api/scribe/patient/:patientId/intelligence
    * Agrège profil (GraphReader) + alertes (Guardian) en JSON Human-Ready pour l'app hôte (Ben).
-   * Si le patient n'existe pas encore dans Neo4j (ex. cabinet-demo), retourne une réponse vide
-   * au lieu de 404 → le widget affiche le panneau au lieu de "Mode Déconnecté".
+   * Si le patient n'existe pas ou Neo4j est vide/indisponible, retourne toujours 200 avec réponse vide
+   * (jamais 500) pour que le widget reste utilisable.
    */
   async getPatientIntelligence(patientId: string): Promise<IntelligenceResponse> {
-    let profile: Awaited<ReturnType<GraphReaderService['getPatientMedicalProfile']>>;
+    const emptyIntelligence = (summary: string): IntelligenceResponse =>
+      IntelligenceResponseSchema.parse({
+        summary,
+        timeline: [],
+        activeAlerts: [],
+        quickActions: [],
+      });
+
     try {
-      profile = await this.graphReader.getPatientMedicalProfile(patientId);
-    } catch (e) {
-      if (e instanceof NotFoundException) {
-        return IntelligenceResponseSchema.parse({
-          summary: 'Aucune donnée enregistrée pour ce patient.',
-          timeline: [],
-          activeAlerts: [],
-          quickActions: [],
-        });
+      let profile: Awaited<ReturnType<GraphReaderService['getPatientMedicalProfile']>>;
+      try {
+        profile = await this.graphReader.getPatientMedicalProfile(patientId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (e instanceof NotFoundException) {
+          return emptyIntelligence('Aucune donnée enregistrée pour ce patient.');
+        }
+        this.logger.warn('[getPatientIntelligence] Graph indisponible ou erreur, retour vide', msg);
+        return emptyIntelligence('Profil temporairement indisponible (graphe non connecté).');
       }
-      throw e;
-    }
 
-    const draft: Consultation = {
-      patientId: profile.patientId,
-      transcript: '',
-      symptoms: ['(profil)'],
-      diagnosis: [{ code: 'Z00', confidence: 1, label: 'Profil' }],
-      medications: (profile.medications ?? []).map((m) => ({
-        name: m.name,
-        dosage: m.dosage ?? '—',
-        duration: '—',
-      })),
-    };
+      const draft: Consultation = {
+        patientId: profile.patientId,
+        transcript: '',
+        symptoms: ['(profil)'],
+        diagnosis: [{ code: 'Z00', confidence: 1, label: 'Profil' }],
+        medications: (profile.medications ?? []).map((m) => ({
+          name: m.name,
+          dosage: m.dosage ?? '—',
+          duration: '—',
+        })),
+      };
 
-    let guardAlerts: string[] = [];
-    try {
-      guardAlerts = (await this.scribeGuardian.checkSafety(profile.patientId, draft)).alerts;
+      let guardAlerts: string[] = [];
+      try {
+        guardAlerts = (await this.scribeGuardian.checkSafety(profile.patientId, draft)).alerts;
+      } catch (e) {
+        this.logger.warn(
+          '[getPatientIntelligence] Guardian checkSafety failed, using empty alerts',
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+
+      const activeAlerts = guardAlerts.map((message) => ({
+        level: (message.toLowerCase().includes('attention') || message.toLowerCase().includes('allergie') ? 'HIGH' : 'MEDIUM') as 'HIGH' | 'MEDIUM',
+        message,
+      }));
+
+      const consultations = profile.consultations ?? [];
+      const timeline = consultations.slice(0, 5).map((c) => ({
+        date: c.date ?? '',
+        type: 'consultation' as const,
+        summary: c.date ? `Consultation du ${c.date}` : `Consultation ${c.id ?? ''}`,
+      }));
+
+      const condLabels = (profile.conditions ?? []).map((c) => c.name).filter(Boolean);
+      const nCond = condLabels.length;
+      const nMed = (profile.medications ?? []).length;
+      const nCons = consultations.length;
+      let summary: string;
+      if (nCons === 0 && nCond === 0 && nMed === 0) {
+        summary = 'Aucune donnée enregistrée pour ce patient.';
+      } else {
+        const parts: string[] = [];
+        if (nCond) parts.push(`${nCond} condition(s) (${condLabels.slice(0, 3).join(', ')}${nCond > 3 ? '…' : ''})`);
+        if (nMed) parts.push(`${nMed} médicament(s)`);
+        if (nCons) parts.push(`${nCons} consultation(s)`);
+        summary = `Patient avec ${parts.join(', ')}. Suivi régulier.`;
+      }
+
+      const quickActions: string[] = [];
+      if (nMed > 0) quickActions.push('Renouvellement ordonnance');
+      if (nCons > 0) quickActions.push('Planifier prochain RDV');
+      if (activeAlerts.length > 0) quickActions.push('Vérifier alertes');
+
+      return IntelligenceResponseSchema.parse({
+        summary,
+        timeline,
+        activeAlerts,
+        quickActions,
+      });
     } catch (e) {
-      this.logger.warn(
-        '[getPatientIntelligence] Guardian checkSafety failed, using empty alerts',
-        e instanceof Error ? e.message : String(e),
-      );
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error('[getPatientIntelligence] Erreur inattendue, retour vide', msg, e instanceof Error ? e.stack : undefined);
+      return emptyIntelligence('Profil temporairement indisponible (graphe non connecté).');
     }
-
-    const activeAlerts = guardAlerts.map((message) => ({
-      level: (message.toLowerCase().includes('attention') || message.toLowerCase().includes('allergie') ? 'HIGH' : 'MEDIUM') as 'HIGH' | 'MEDIUM',
-      message,
-    }));
-
-    const consultations = profile.consultations ?? [];
-    const timeline = consultations.slice(0, 5).map((c) => ({
-      date: c.date ?? '',
-      type: 'consultation',
-      summary: c.date ? `Consultation du ${c.date}` : `Consultation ${c.id}`,
-    }));
-
-    const condLabels = (profile.conditions ?? []).map((c) => c.name).filter(Boolean);
-    const nCond = condLabels.length;
-    const nMed = (profile.medications ?? []).length;
-    const nCons = consultations.length;
-    let summary: string;
-    if (nCons === 0 && nCond === 0 && nMed === 0) {
-      summary = 'Aucune donnée enregistrée pour ce patient.';
-    } else {
-      const parts: string[] = [];
-      if (nCond) parts.push(`${nCond} condition(s) (${condLabels.slice(0, 3).join(', ')}${nCond > 3 ? '…' : ''})`);
-      if (nMed) parts.push(`${nMed} médicament(s)`);
-      if (nCons) parts.push(`${nCons} consultation(s)`);
-      summary = `Patient avec ${parts.join(', ')}. Suivi régulier.`;
-    }
-
-    const quickActions: string[] = [];
-    if (nMed > 0) quickActions.push('Renouvellement ordonnance');
-    if (nCons > 0) quickActions.push('Planifier prochain RDV');
-    if (activeAlerts.length > 0) quickActions.push('Vérifier alertes');
-
-    return IntelligenceResponseSchema.parse({
-      summary,
-      timeline,
-      activeAlerts,
-      quickActions,
-    });
   }
 
   /**
@@ -704,49 +715,58 @@ export class ScribeService {
       }
     }
 
-    const result = await withMetrics(
-      this.metricsService,
-      'scribe.analyzeConsultation',
-      async () => {
-        const aiMode = this.configService.aiMode;
-        this.logger.debug(`Analyzing consultation with AI_MODE: ${aiMode}`);
+    let result: Consultation;
+    try {
+      result = await withMetrics(
+        this.metricsService,
+        'scribe.analyzeConsultation',
+        async () => {
+          const aiMode = this.configService.aiMode;
+          this.logger.debug(`Analyzing consultation with AI_MODE: ${aiMode}`);
 
-        let consultation: Consultation;
-        switch (aiMode) {
-          case 'MOCK':
-            consultation = this.analyzeConsultationMock(text, patientId);
-            break;
-
-          case 'CLOUD':
-            if (!this.openaiClient) {
-              this.logger.warn('CLOUD demandé mais pas de clé API valide → fallback MOCK');
+          let consultation: Consultation;
+          switch (aiMode) {
+            case 'MOCK':
               consultation = this.analyzeConsultationMock(text, patientId);
-            } else {
-              consultation = await this.analyzeConsultationCloud(text);
-            }
-            break;
+              break;
 
-          case 'LOCAL':
-            consultation = await this.analyzeConsultationLocal(text);
-            break;
+            case 'CLOUD':
+              if (!this.openaiClient) {
+                this.logger.warn('CLOUD demandé mais pas de clé API valide → fallback MOCK');
+                consultation = this.analyzeConsultationMock(text, patientId);
+              } else {
+                consultation = await this.analyzeConsultationCloud(text);
+              }
+              break;
 
-          default:
-            this.logger.warn(
-              `Unknown AI_MODE: ${aiMode}, falling back to MOCK`,
-            );
-            consultation = this.analyzeConsultationMock(text, patientId);
-        }
+            case 'LOCAL':
+              consultation = await this.analyzeConsultationLocal(text);
+              break;
 
-        // Mettre en cache si activé (sauf en mode MOCK pour éviter le cache inutile)
-        if (this.enableCache && this.cacheService && aiMode !== 'MOCK') {
-          this.cacheService.set(cacheKey, consultation, this.cacheTTL);
-          this.metricsService.incrementCounter('scribe.cache.miss');
-          this.logger.debug(`Cached consultation analysis (key: ${cacheKey.substring(0, 8)}...)`);
-        }
+            default:
+              this.logger.warn(
+                `Unknown AI_MODE: ${aiMode}, falling back to MOCK`,
+              );
+              consultation = this.analyzeConsultationMock(text, patientId);
+          }
 
-        return consultation;
-      },
-    );
+          // Mettre en cache si activé (sauf en mode MOCK pour éviter le cache inutile)
+          if (this.enableCache && this.cacheService && this.configService.aiMode !== 'MOCK') {
+            this.cacheService.set(cacheKey, consultation, this.cacheTTL);
+            this.metricsService.incrementCounter('scribe.cache.miss');
+            this.logger.debug(`Cached consultation analysis (key: ${cacheKey.substring(0, 8)}...)`);
+          }
+
+          return consultation;
+        },
+      );
+    } catch (e) {
+      this.logger.warn(
+        '[analyzeConsultation] Erreur (IA/Cloud/Local), fallback MOCK',
+        e instanceof Error ? e.message : String(e),
+      );
+      result = this.analyzeConsultationMock(text, patientId);
+    }
 
     // Enregistrer métrique de performance par mode
     const duration = Date.now() - startTime;

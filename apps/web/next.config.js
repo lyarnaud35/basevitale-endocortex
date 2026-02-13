@@ -24,9 +24,9 @@ const nextConfig = {
     };
     return config;
   },
-  // Proxy /api vers l'API NestJS. Par défaut API sur 3001 pour éviter conflit avec Next sur 3000.
+  // Proxy /api vers l'API NestJS. Doit correspondre au PORT de l'API (défaut 3000 avec npm run dev:api).
   async rewrites() {
-    const target = process.env.API_BACKEND_URL || 'http://localhost:3001';
+    const target = process.env.API_BACKEND_URL || 'http://localhost:3000';
     return [{ source: '/api/:path*', destination: `${target}/api/:path*` }];
   },
   env: {

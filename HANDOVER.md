@@ -21,6 +21,16 @@ J'ai finalisé la structure Backend et le SDK. Toute la logique complexe (Calcul
    - **`/demo/drugs`** : Recherche médicament + sécurité (Amoxicilline BLOQUÉ pour Jean Peuplu).
    - **`/demo/scribe`** : La donnée patient structurée.
 
+**Comment démarrer :**
+
+1. `docker-compose up -d` (Neo4j + API si besoin).
+2. `npm run dev` (ou `nx serve web` + `nx serve api`).
+3. **Note importante sur la Data :** Au premier démarrage (ou après un `docker-compose down -v`), la base Neo4j est vide. Pour que les démos fonctionnent (Jean Peuplu, alerte Amoxicilline, facturation) :
+   - **Option A :** Ouvrir Neo4j Browser (`http://localhost:7474`), se connecter (neo4j / test), puis copier-coller le contenu du fichier **`seed.cypher`** à la racine du projet et exécuter les requêtes.
+   - **Option B :** Lancer le seed NestJS : `npm run seed:scenarios` (après avoir démarré l’API une fois pour que Neo4j soit joignable).
+
+**Dépannage Scribe 500 :** Le front appelle toujours l'ID `scenario-jean-peuplu` (voir `apps/web/app/demo/scribe/page.tsx`). Pas d'ID mismatch. Si 500 persiste : vérifier l'URL dans Network ; appeler en direct `http://localhost:3001/api/scribe/patient/scenario-jean-peuplu/intelligence` et regarder le terminal Backend ; vérifier `NEO4J_PASSWORD` dans `apps/api/.env` (identique à Neo4j Browser).
+
 **Ta mission :**  
 Tu peux supprimer mes pages `/demo` (elles sont moches, c'est fait exprès) et construire la vraie UI par-dessus les hooks du SDK.
 

@@ -157,6 +157,11 @@ const EMPTY_INTELLIGENCE: IntelligenceResponse = {
   quickActions: [],
 };
 
+/**
+ * GET /api/scribe/patient/:patientId/intelligence
+ * En 404 ou 500, retourne une réponse vide (pas de throw) pour que le widget
+ * affiche "déconnecté" / "Aucune donnée" au lieu de casser l'UI (résilience Tabula Rasa).
+ */
 export async function getPatientIntelligence(
   cfg: ScribeConfig,
   patientId: string
@@ -165,8 +170,8 @@ export async function getPatientIntelligence(
   const res = await fetch(url, {
     headers: { Authorization: auth(cfg) },
   });
-  if (res.status === 404) {
-    return EMPTY_INTELLIGENCE;
+  if (res.status === 404 || res.status === 500) {
+    return { ...EMPTY_INTELLIGENCE, summary: 'Profil temporairement indisponible (graphe non connecté).' };
   }
   if (!res.ok) {
     const d = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
