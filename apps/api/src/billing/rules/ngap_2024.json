@@ -7,6 +7,8 @@
   {"id":"VISITE_CS","type":"line","trigger":"VS","price":33,"part_secu":0.7,"conditions":[],"label":"Visite secteur 2 (VS)"},
   {"id":"ACTE_TECHNIQUE_K","type":"line","trigger":"K","price":1.92,"part_secu":0.7,"conditions":[],"label":"Acte technique (K)"},
   {"id":"MAJORATION_DIMANCHE","type":"line","trigger":"MD","price":19.06,"part_secu":0.7,"conditions":[],"label":"Majoration dimanche (MD)"},
+  {"id":"ECG","type":"line","trigger":"ECG","price":14.26,"part_secu":0.7,"conditions":[],"label":"Electrocardiogramme (ECG)"},
+  {"id":"SPIRO_ALQP003","type":"line","trigger":"ALQP003","price":40.28,"part_secu":0.7,"conditions":[],"label":"Spirométrie (ALQP003)"},
   {"id":"MAJORATION_ENFANT_MEG","type":"line","trigger":"C","price":5,"part_secu":1,"conditions":[{"fact":"patient.age","operator":"lessThan","value":6}],"label":"Majoration Enfant (-6 ans)","ruleId":"MEG"},
   {"id":"CMU_TIERS_PAYANT","type":"modifier","conditions":[{"fact":"patient.coverage","operator":"equal","value":1}],"effect":"patient_pays_zero"}
 ]

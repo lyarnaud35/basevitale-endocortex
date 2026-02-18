@@ -11,6 +11,7 @@ import { ScribeModule } from '../scribe/scribe.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { IdentityModule } from '../identity/identity.module';
 import { KnowledgeGraphModule } from '../knowledge-graph/knowledge-graph.module';
+import { PrescriptionDraftModule } from '../prescription-draft/prescription-draft.module';
 import { BillingModule } from '../billing/billing.module';
 import { CodingModule } from '../coding/coding.module';
 import { FeedbackModule } from '../feedback/feedback.module';
@@ -70,6 +71,7 @@ import { GhostEventModule } from '../ghost-event/ghost-event.module';
     SecurityModule,
     IdentityModule,
     KnowledgeGraphModule,
+    PrescriptionDraftModule,
     BillingModule,
     CodingModule,
     FeedbackModule,

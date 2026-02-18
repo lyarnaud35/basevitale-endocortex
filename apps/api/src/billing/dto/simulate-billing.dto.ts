@@ -1,8 +1,8 @@
-import { IsArray, IsOptional, IsString, IsNumber, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, IsNumber, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SimulateBillingDto {
-  @ApiProperty({ description: 'Liste des codes actes (ex. C, MD)', example: ['C'] })
+  @ApiProperty({ description: 'Liste des codes actes (ex. C, MD, ECG)', example: ['C'] })
   @IsArray()
   @IsString({ each: true })
   acts!: string[];
@@ -17,4 +17,9 @@ export class SimulateBillingDto {
   @IsNumber()
   @Min(0)
   patientAge?: number;
+
+  @ApiPropertyOptional({ description: 'Patient ALD/CMU : 100 % Sécu, 0 € reste à charge' })
+  @IsOptional()
+  @IsBoolean()
+  ald?: boolean;
 }

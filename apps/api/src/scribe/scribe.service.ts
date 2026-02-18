@@ -39,6 +39,7 @@ import { ScribeGuardianService } from './guardian.service';
 import { ScribeGraphProjectorService } from './graph-projector.service';
 import { GraphReaderService } from './graph-reader.service';
 import { SecurityService } from '../medical/security.service';
+import { BillingService } from '../billing/billing.service';
 
 /**
  * ScribeService - Module S (Scribe) Phase 1
@@ -76,6 +77,7 @@ export class ScribeService {
     private readonly scribeGraphProjector: ScribeGraphProjectorService,
     private readonly graphReader: GraphReaderService,
     private readonly securityService: SecurityService,
+    @Optional() private readonly billingService?: BillingService,
     @Optional() private readonly cacheService?: CacheService,
     @Optional() @InjectQueue('scribe-consultation') private scribeQueue?: Queue,
   ) {
@@ -538,11 +540,21 @@ export class ScribeService {
       if (nCons > 0) quickActions.push('Planifier prochain RDV');
       if (activeAlerts.length > 0) quickActions.push('Vérifier alertes');
 
+      let suggestedBillingCodes: string[] = [];
+      if (this.billingService) {
+        try {
+          suggestedBillingCodes = await this.billingService.getProceduresForToday(profile.patientId);
+        } catch {
+          // Neo4j / Billing indisponible : laisser []
+        }
+      }
+
       return IntelligenceResponseSchema.parse({
         summary,
         timeline,
         activeAlerts,
         quickActions,
+        suggestedBillingCodes,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

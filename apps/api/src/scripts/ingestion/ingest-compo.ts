@@ -31,10 +31,22 @@ import { IngestCisModule } from './ingest-cis.module';
 import { Neo4jService } from '../../neo4j/neo4j.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Transform } from 'stream';
 import csv from 'csv-parser';
 import * as iconv from 'iconv-lite';
 
 const BATCH_SIZE = 1000;
+
+/** Supprime les caractères de contrôle (sauf \\t \\n \\r) pour éviter les plantages sur la base complète. */
+function sanitizeStream(): Transform {
+  return new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      const s = chunk.toString('utf8').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+      this.push(Buffer.from(s, 'utf8'));
+      cb();
+    },
+  });
+}
 
 /** Une ligne de composition (SA uniquement) : Drug cisId → Molecule code + dosage */
 interface CompoRow {
@@ -47,7 +59,7 @@ interface CompoRow {
 async function processBatch(neo4j: Neo4jService, batch: CompoRow[]): Promise<void> {
   const query = `
     UNWIND $batch AS row
-    MATCH (d:Drug {cisId: row.cisId})
+    MERGE (d:Drug {cisId: row.cisId})
     MERGE (m:Molecule {code: row.substanceCode})
     ON CREATE SET m.name = row.substanceName
     MERGE (d)-[r:CONTIENT]->(m)
@@ -62,7 +74,11 @@ async function bootstrap() {
 
   console.log('🧪 Démarrage du Tissage Moléculaire (Compositions)...');
 
-  const filePath = path.join(process.cwd(), 'src/scripts/ingestion/data/CIS_COMPO_bdpm.txt');
+  const defaultPath = path.join(process.cwd(), 'src/scripts/ingestion/data/CIS_COMPO_bdpm.txt');
+  const filePath = process.env.BDPM_COMPO_FILE
+    ? path.resolve(process.cwd(), process.env.BDPM_COMPO_FILE)
+    : defaultPath;
+  if (process.env.BDPM_COMPO_FILE) console.log(`📂 Fichier (sample): ${filePath}`);
 
   if (!fs.existsSync(filePath)) {
     console.error(`❌ Fichier introuvable : ${filePath}`);
@@ -86,6 +102,7 @@ async function bootstrap() {
   const stream = fs
     .createReadStream(filePath)
     .pipe(iconv.decodeStream('latin1'))
+    .pipe(sanitizeStream())
     .pipe(
       csv({
         separator: '\t',

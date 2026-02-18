@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { setBaseUrl, useBillingSimulation } from '@basevitale/ghost-sdk';
 import { ScenarioSelector } from '../components/ScenarioSelector';
 
@@ -10,17 +10,23 @@ const API_BASE =
     : '';
 setBaseUrl(API_BASE);
 
-/** Actes NGAP pour la preuve visuelle (C, V, K = spec Ghost Protocol). */
-const ACT_BUTTONS = [
+/** Actes NGAP/CCAM courants (C, V, G, MD, K, ECG, ALQP003). */
+const ACTES_COURANTS = [
   { code: 'C', label: 'Consultation (26,50 €)' },
   { code: 'V', label: 'Visite (33 €)' },
-  { code: 'K', label: 'Acte technique (1,92 €)' },
-  { code: 'MD', label: 'Majoration dimanche (+19,06 €)' },
+  { code: 'G', label: 'Consultation G (26,50 €)' },
+  { code: 'MD', label: 'Majoration dimanche (19,06 €)' },
+  { code: 'K', label: 'Acte technique K (1,92 €)' },
+  { code: 'ECG', label: 'ECG (14,26 €)' },
+  { code: 'ALQP003', label: 'Spirométrie (40,28 €)' },
 ] as const;
 
 export default function BillingDemoPage() {
   const [patientId, setPatientId] = useState<string | undefined>('scenario-jean-peuplu');
-  const [acts, setActs] = useState<string[]>([]);
+  const [ald, setAld] = useState(false);
+  const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
+
+  const acts = useMemo(() => [...selectedCodes], [selectedCodes]);
 
   const {
     total,
@@ -32,31 +38,46 @@ export default function BillingDemoPage() {
     error,
     data,
   } = useBillingSimulation(acts, {
-    patientId: patientId || undefined,
+    patientId: ald ? undefined : (patientId || undefined),
+    ald: ald ? true : undefined,
     enabled: true,
   });
 
-  const addAct = (code: string) => setActs((prev) => [...prev, code]);
-  const removeAct = (index: number) => setActs((prev) => prev.filter((_, i) => i !== index));
-  const clearActs = () => setActs([]);
+  const toggleAct = (code: string) => {
+    setSelectedCodes((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  };
+  const clearActs = () => setSelectedCodes([]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-8 font-sans">
       <h1 className="text-2xl font-semibold mb-1">
-        Réacteur fiscal (Preuve visuelle)
+        Moteur de valorisation financière (E+)
       </h1>
       <p className="text-zinc-400 text-sm mb-8">
-        Moteur Server-Driven : scénario patient + actes → Total, Part Sécu, Reste à charge, règles appliquées. Jean Peuplu = ALD 100%.
+        Cotation rapide NGAP/CCAM : sélectionnez les actes et le mode patient. Total, Part Sécu et Reste à charge en temps réel.
       </p>
 
-      {/* Sélecteur de scénario */}
-      <section className="mb-8 max-w-md">
-        <ScenarioSelector
-          value={patientId}
-          onChange={(v) => setPatientId(v)}
-          label="Patient (scénario)"
-        />
+      <section className="mb-6 flex items-center gap-3">
+        <span className="text-sm font-medium text-zinc-300">Patient ALD (100 % Sécu)</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={ald}
+          onClick={() => setAld((v) => !v)}
+          className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-zinc-950 ${ald ? 'bg-emerald-600' : 'bg-zinc-600'}`}
+        >
+          <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition ${ald ? 'translate-x-5' : 'translate-x-1'}`} />
+        </button>
+        <span className="text-sm text-zinc-500">{ald ? 'Oui (0 € à charge)' : 'Non (70 % Sécu / 30 % patient)'}</span>
       </section>
+
+      {!ald && (
+        <section className="mb-6 max-w-md">
+          <ScenarioSelector value={patientId} onChange={(v) => setPatientId(v)} label="Patient (scénario)" />
+        </section>
+      )}
 
       {/* Sélecteur d’actes (C, V, K) */}
       <section className="mb-8">
@@ -64,16 +85,19 @@ export default function BillingDemoPage() {
           Actes
         </label>
         <div className="flex flex-wrap gap-2 mb-3">
-          {ACT_BUTTONS.map(({ code, label }) => (
-            <button
+          {ACTES_COURANTS.map(({ code, label }) => (
+            <label
               key={code}
-              type="button"
-              onClick={() => addAct(code)}
-              className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 font-medium text-sm transition-colors"
-              title={label}
+              className="inline-flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 font-medium text-sm"
             >
-              + {code}
-            </button>
+              <input
+                type="checkbox"
+                checked={selectedCodes.includes(code)}
+                onChange={() => toggleAct(code)}
+                className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-emerald-600"
+              />
+              {label}
+            </label>
           ))}
           {acts.length > 0 && (
             <button
@@ -85,18 +109,18 @@ export default function BillingDemoPage() {
             </button>
           )}
         </div>
-        {acts.length > 0 && (
+        {selectedCodes.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-zinc-500 text-sm">Actes :</span>
-            {acts.map((code, i) => (
+            <span className="text-zinc-500 text-sm">Sélection :</span>
+            {selectedCodes.map((code) => (
               <span
-                key={`${code}-${i}`}
+                key={code}
                 className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 text-zinc-200 text-sm"
               >
                 {code}
                 <button
                   type="button"
-                  onClick={() => removeAct(i)}
+                  onClick={() => toggleAct(code)}
                   className="text-zinc-500 hover:text-red-400 text-xs"
                   aria-label="Retirer"
                 >
@@ -130,7 +154,7 @@ export default function BillingDemoPage() {
           <h2 className="text-sm font-medium text-zinc-400 mb-4">Résultat (useBillingSimulation)</h2>
           {acts.length === 0 ? (
             <p className="text-zinc-500 text-sm">
-              Sélectionne un scénario et des actes (C, V, K) pour voir le calcul en temps réel.
+              Cochez des actes (C, V, ECG…) pour voir le calcul en temps réel.
             </p>
           ) : (
             <>

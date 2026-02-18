@@ -42,6 +42,8 @@ export const simulateInputSchema = z.object({
     .min(0, 'patientAge ne peut pas être négatif')
     .max(AGE_MAX, `patientAge ne peut pas dépasser ${AGE_MAX}`)
     .optional(),
+  /** Si true : 100 % Sécu (tiers payant ALD/CMU). Si false ou omis : 70 % Sécu / 30 % patient. */
+  ald: z.boolean().optional(),
 });
 
 export type PatientContextValidated = z.infer<typeof patientContextSchema>;

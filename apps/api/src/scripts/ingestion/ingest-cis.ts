@@ -32,10 +32,22 @@ import { IngestCisModule } from './ingest-cis.module';
 import { Neo4jService } from '../../neo4j/neo4j.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Transform } from 'stream';
 import csv from 'csv-parser';
 import * as iconv from 'iconv-lite';
 
 const BATCH_SIZE = 1000;
+
+/** Supprime les caractères de contrôle (sauf \\t \\n \\r) pour éviter les plantages sur 15k+ lignes. */
+function sanitizeStream(): Transform {
+  return new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      const s = chunk.toString('utf8').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+      this.push(Buffer.from(s, 'utf8'));
+      cb();
+    },
+  });
+}
 
 interface DrugRow {
   cisId: string;
@@ -74,12 +86,30 @@ async function bootstrap() {
 
   console.log("🚀 Démarrage du Pipeline d'Ingestion CIS (Médicaments)...");
 
-  const filePath = path.join(process.cwd(), 'src/scripts/ingestion/data/CIS_bdpm.txt');
+  const defaultPath = path.join(process.cwd(), 'src/scripts/ingestion/data/CIS_bdpm.txt');
+  const filePath = process.env.BDPM_CIS_FILE
+    ? path.resolve(process.cwd(), process.env.BDPM_CIS_FILE)
+    : defaultPath;
+  if (process.env.BDPM_CIS_FILE) console.log(`📂 Fichier (sample): ${filePath}`);
 
   if (!fs.existsSync(filePath)) {
     console.error(`❌ Fichier introuvable : ${filePath}`);
     await app.close();
     process.exit(1);
+  }
+
+  console.log('🏗️  Contraintes et index (performance MERGE/recherche)...');
+  try {
+    await neo4jService.executeQuery(`
+      CREATE CONSTRAINT drug_cis_unique IF NOT EXISTS
+      FOR (d:Drug) REQUIRE d.cisId IS UNIQUE
+    `);
+    await neo4jService.executeQuery(`
+      CREATE INDEX drug_name_index IF NOT EXISTS
+      FOR (d:Drug) ON (d.name)
+    `);
+  } catch (e: any) {
+    if (!e?.message?.includes('already exists')) console.warn('Index/Constraint:', e?.message ?? e);
   }
 
   const results: DrugRow[] = [];
@@ -88,6 +118,7 @@ async function bootstrap() {
   const stream = fs
     .createReadStream(filePath)
     .pipe(iconv.decodeStream('latin1'))
+    .pipe(sanitizeStream())
     .pipe(
       csv({
         separator: '\t',
@@ -139,16 +170,6 @@ async function bootstrap() {
   if (results.length > 0) {
     await processBatch(neo4jService, results);
     processedCount += results.length;
-  }
-
-  console.log('🏗️  Création des index de performance...');
-  try {
-    await neo4jService.executeQuery(`
-      CREATE CONSTRAINT drug_cis_unique IF NOT EXISTS
-      FOR (d:Drug) REQUIRE d.cisId IS UNIQUE
-    `);
-  } catch (e: any) {
-    if (!e?.message?.includes('already exists')) console.warn('Constraint:', e?.message ?? e);
   }
 
   try {

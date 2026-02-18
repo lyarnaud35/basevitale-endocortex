@@ -1,0 +1,11 @@
+61266250	A 313 200 000 UI POUR CENT, pommade	pommade	cutanée	Autorisation active	Procédure nationale	Commercialisée	12/03/1998			 PHARMA DEVELOPPEMENT	Non
+62869109	A 313 50 000 U.I., capsule molle	capsule molle	orale	Autorisation active	Procédure nationale	Commercialisée	07/07/1997			 PHARMA DEVELOPPEMENT	Non
+69103878	A.D.N. BOIRON, degré de dilution compris entre 4CH et 30CH ou entre 8DH et 60DH	 comprimé et solution(s) et granules et poudre et pommade	cutanée;orale;sublinguale	Autorisation active	Enreg homéo (Proc. Nat.)	Commercialisée	14/10/2021			 BOIRON	Non
+61876780	ABACAVIR ARROW 300 mg, comprimé pelliculé sécable	comprimé pelliculé sécable	orale	Autorisation active	Procédure décentralisée	Commercialisée	22/10/2019			 ARROW GENERIQUES	Non
+63797011	ABACAVIR SANDOZ 300 mg, comprimé pelliculé sécable	comprimé pelliculé sécable	orale	Autorisation active	Procédure décentralisée	Commercialisée	30/12/2016			 SANDOZ	Non
+62401060	ABACAVIR VIATRIS 300 mg, comprimé pelliculé sécable	comprimé pelliculé sécable	orale	Autorisation active	Procédure décentralisée	Commercialisée	21/02/2018			 VIATRIS SANTE	Non
+68257528	ABACAVIR/LAMIVUDINE ACCORD 600 mg/300 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation active	Procédure nationale	Non commercialisée	16/03/2017	Warning disponibilité		 ACCORD HEALTHCARE FRANCE	Non
+62828870	ABACAVIR/LAMIVUDINE ARROW 600 mg/300 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation active	Procédure décentralisée	Commercialisée	15/12/2017			 ARROW GENERIQUES	Non
+63431640	ABACAVIR/LAMIVUDINE BIOGARAN 600 mg/300 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation active	Procédure nationale	Commercialisée	14/02/2017			 BIOGARAN	Non
+65196479	ABACAVIR/LAMIVUDINE EG 600 mg/300 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation active	Procédure décentralisée	Commercialisée	13/01/2017			 EG LABO - LABORATOIRES EUROGENERICS	Non
+62170486	ABACAVIR/LAMIVUDINE MYLAN 600 mg/300 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation active	Procédure nationale	Non commercialisée	03/03/2017	Warning disponibilité		 MYLAN SAS	Non

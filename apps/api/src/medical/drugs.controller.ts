@@ -42,46 +42,15 @@ export class DrugsController {
 
     const effectivePatientId = patientId?.trim();
     if (effectivePatientId && hits.length > 0) {
-      for (const hit of hits) {
-        hit.safety = { status: 'SAFE' as const } satisfies DrugSearchSafety;
-      }
-      try {
-        const result = await this.guardian.checkMedicationsAgainstAllergies(
-          effectivePatientId,
-          hits.map((h) => ({
-            name: h.label,
-            molecules: h.molecules?.map((m) => m.name),
-          })),
-        );
-        const norm = (s: string) => (s ?? '').toLowerCase().trim().replace(/\s+/g, ' ');
-        for (const hit of hits) {
-          const hitNorm = norm(hit.label);
-          const conflict = result.conflicts.find((c) => norm(c.medication) === hitNorm);
-          if (conflict) {
-            hit.safety = {
-              status: 'BLOCKED',
-              reason: conflict.reason ?? 'Médication contre-indiquée pour ce patient.',
-            } satisfies DrugSearchSafety;
-          }
-        }
-      } catch (e) {
-        // En cas d'erreur Guardian, on garde SAFE partout (safety déjà initialisé ci‑dessus)
-      }
-
-      // Filet de sécurité démo : scénario allergie Pénicilline → bloquer tout médicament contenant de l'amoxicilline (libellé ou molécule)
-      const penicillinScenarioIds = ['scenario-jean-peuplu'];
-      if (penicillinScenarioIds.includes(effectivePatientId.toLowerCase())) {
-        const blockReason = 'Allergie Pénicilline (scénario) : ce médicament contient de l’amoxicilline ou une molécule de la famille.';
-        for (const hit of hits) {
-          const labelLower = (hit.label ?? '').toLowerCase();
-          const hasAmoxicilline = labelLower.includes('amoxicilline');
-          const moleculeHasAmoxicilline = hit.molecules?.some((m) =>
-            (m.name ?? '').toLowerCase().includes('amoxicilline'),
-          );
-          if (hasAmoxicilline || moleculeHasAmoxicilline) {
-            hit.safety = { status: 'BLOCKED', reason: blockReason } satisfies DrugSearchSafety;
-          }
-        }
+      const safetyResults = await Promise.all(
+        hits.map((h) => this.guardian.getDrugSafetyForPatient(effectivePatientId, h.id)),
+      );
+      for (let i = 0; i < hits.length; i++) {
+        const s = safetyResults[i];
+        hits[i].safety =
+          s.status === 'BLOCKED'
+            ? ({ status: 'BLOCKED', reason: s.reason ?? 'Médication contre-indiquée pour ce patient.' } satisfies DrugSearchSafety)
+            : ({ status: 'SAFE' } satisfies DrugSearchSafety);
       }
     }
 

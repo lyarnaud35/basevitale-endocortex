@@ -118,4 +118,6 @@ export class IntelligenceResponseDto {
   @ApiProperty({ type: [IntelligenceTimelineItemDto] }) timeline: IntelligenceTimelineItemDto[];
   @ApiProperty({ type: [IntelligenceAlertDto] }) activeAlerts: IntelligenceAlertDto[];
   @ApiProperty({ type: [String] }) quickActions: string[];
+  @ApiProperty({ type: [String], required: false, description: 'Codes NGAP/CCAM suggérés (actes du jour)' })
+  suggestedBillingCodes?: string[];
 }

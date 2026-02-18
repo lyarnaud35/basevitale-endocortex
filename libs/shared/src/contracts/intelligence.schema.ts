@@ -23,6 +23,8 @@ export const IntelligenceResponseSchema = z.object({
   timeline: z.array(IntelligenceTimelineItemSchema),
   activeAlerts: z.array(IntelligenceAlertSchema),
   quickActions: z.array(z.string()),
+  /** Codes NGAP/CCAM suggérés (actes du jour déduits du graphe). Pour fusion Clinique → Facturation. */
+  suggestedBillingCodes: z.array(z.string()).optional(),
 });
 
 export type IntelligenceTimelineItem = z.infer<typeof IntelligenceTimelineItemSchema>;

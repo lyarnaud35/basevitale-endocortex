@@ -18,9 +18,11 @@ import { CommonModule } from '../common/common.module';
 import { ScribeMachineService } from './scribe-machine.service';
 import { ScribeGhostService } from './scribe-ghost.service';
 import { CoreGhostModule } from '../core-ghost/core-ghost.module';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
+    BillingModule,
     HttpModule.register({
       timeout: 300000, // 5 min — AI-Cortex peut mettre jusqu'à 300s (inférence CPU)
       maxRedirects: 5,

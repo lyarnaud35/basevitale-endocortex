@@ -3,14 +3,36 @@
  *
  * SDK Frontend pour interagir avec les machines Ghost.
  *
- * Exports :
- * - useGhostMachine : Hook React pour se connecter à une machine via SSE
- * - useGetPatientDashboardState : Hook React Query pour le dashboard agrégé (Oracle + Security + Coding)
- * - Types : Types TypeScript pour les états et événements
+ * Exports principaux :
+ * - useGhostMachine, useConsultationScanner : Scribe & machines
+ * - usePrescriptionSession, usePatientPrescriptionHistory : Ordonnance
+ * - useFiscalPrediction, useBillingSimulation, useFiscalPredictionFromContext : Facturation (simulation)
+ * - useValidateInvoice, useDailyActivity : Validation facture + CA Journée
+ * - useInvoiceLifecycle : Cycle de vie facture (FSM)
+ * - Types : FiscalPredictionResult, ValidateInvoiceResult, DailyActivityResponse, etc.
  */
 
 export { useGhostMachine } from './useGhostMachine';
 export { useConsultationScanner } from './useConsultationScanner';
+export {
+  usePrescriptionSession,
+  getPrescriptionDraftQueryKey,
+} from './usePrescriptionSession';
+export {
+  usePatientPrescriptionHistory,
+  getPrescriptionHistoryQueryKey,
+} from './usePatientPrescriptionHistory';
+export type {
+  PrescriptionDraftSession,
+  DraftDrugItem,
+  DraftSafetyReport,
+  ValidatePrescriptionResponse,
+} from './usePrescriptionSession';
+export type {
+  PrescriptionHistoryItem,
+  PrescriptionHistoryDrugItem,
+  PrescriptionHistoryResponse,
+} from './usePatientPrescriptionHistory';
 export type {
   SecurityStatus,
   UseConsultationScannerOptions,
@@ -48,6 +70,16 @@ export {
   useFiscalPrediction,
   useBillingSimulation,
   getFiscalPredictionQueryKey,
+  fetchFiscalPredictionFromContext,
+  getFiscalPredictionFromContextQueryKey,
+  useFiscalPredictionFromContext,
+  addPatientProcedure,
+  removePatientProcedure,
+  validateInvoice,
+  useValidateInvoice,
+  fetchDailyActivity,
+  getDailyActivityQueryKey,
+  useDailyActivity,
   fetchInvoiceLifecycle,
   transitionInvoiceStatus,
   getInvoiceLifecycleQueryKey,
@@ -55,6 +87,11 @@ export {
 } from './lib/billing';
 export type {
   FiscalPredictionResult,
+  FiscalPredictionFromContextResult,
+  FiscalPredictionContextOverrides,
+  ValidateInvoiceResult,
+  DailyActivityItem,
+  DailyActivityResponse,
   InvoiceLifecycleResponse,
   InvoiceIntegrityCheck,
   InvoiceAction,

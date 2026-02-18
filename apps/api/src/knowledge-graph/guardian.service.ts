@@ -48,6 +48,26 @@ export interface GuardianResult {
   conflicts: GuardianConflict[];
 }
 
+/** Résultat de la vérification sécurité pour un médicament (par CIS). */
+export interface DrugSafetyForPatient {
+  status: 'SAFE' | 'BLOCKED';
+  reason?: string;
+}
+
+/** Doublon de molécule dans le brouillon (même substance dans plusieurs spécialités). */
+export interface DuplicateMoleculeAlert {
+  moleculeName: string;
+  drugNames: string[];
+}
+
+/** Rapport de sécurité global d'un brouillon d'ordonnance (allergies + doublons). */
+export interface DraftSafetyReport {
+  status: 'OK' | 'WARNING' | 'CRITICAL';
+  alerts: string[];
+  allergyConflicts: { cisId: string; drugName: string; reason: string }[];
+  duplicateMolecules: DuplicateMoleculeAlert[];
+}
+
 @Injectable()
 export class GuardianService {
   private readonly logger = new Logger(GuardianService.name);
@@ -119,6 +139,99 @@ export class GuardianService {
     const m = trimmed.match(/allergie\s+(?:à\s+(?:la\s+)?|a\s+(?:la\s+)?)?(.+)/i);
     const substance = (m ? m[1] : trimmed).trim();
     return substance ? substance.toLowerCase() : null;
+  }
+
+  /**
+   * Vérification sécurité par CIS (traversée graphe).
+   * Patient → allergies → codes Molecule ; Drug(cisId) -[:CONTIENT]-> Molecule ; intersection = BLOCKED.
+   * Utilisé par GET /drugs/search?patientId= pour enrichir chaque hit avec safety_status.
+   */
+  async getDrugSafetyForPatient(patientId: string, drugCisId: string): Promise<DrugSafetyForPatient> {
+    if (!patientId?.trim() || !drugCisId?.trim()) return { status: 'SAFE' };
+
+    const allergies = await this.getPatientAllergies(patientId);
+    if (allergies.length === 0) return { status: 'SAFE' };
+
+    const allergyCodes = await this.resolveAllergyNamesToMoleculeCodes(allergies);
+    if (allergyCodes.size === 0) return { status: 'SAFE' };
+
+    try {
+      const result = await this.neo4j.executeQuery(
+        `MATCH (d:Drug {cisId: $drugCisId})-[:CONTIENT]->(m:Molecule)
+         WHERE m.code IN $codes
+         RETURN d.name AS drugName, m.name AS moleculeName
+         LIMIT 1`,
+        { drugCisId: drugCisId.trim(), codes: [...allergyCodes] },
+      );
+      if (result.records.length === 0) return { status: 'SAFE' };
+      const drugName = String(result.records[0].get('drugName') ?? 'Ce médicament');
+      const moleculeName = String(result.records[0].get('moleculeName') ?? 'substance allergène');
+      return {
+        status: 'BLOCKED',
+        reason: `INTERDICTION : ${drugName} contient ${moleculeName} (allergie connue).`,
+      };
+    } catch (err) {
+      this.logger.warn(
+        '[Gardien] getDrugSafetyForPatient Neo4j error',
+        err instanceof Error ? err.message : String(err),
+      );
+      return { status: 'SAFE' };
+    }
+  }
+
+  /**
+   * Analyse globale du brouillon : allergies (Patient ↔ Drug) + doublons de molécules (Drug A ↔ Drug B).
+   * Utilisé par le PrescriptionDraftService après chaque add/remove.
+   */
+  async analyzeDraft(patientId: string, draftCisIds: string[]): Promise<DraftSafetyReport> {
+    const allergyConflicts: { cisId: string; drugName: string; reason: string }[] = [];
+    const duplicateMolecules: DuplicateMoleculeAlert[] = [];
+    const alerts: string[] = [];
+
+    if (!draftCisIds?.length) {
+      return { status: 'OK', alerts: [], allergyConflicts: [], duplicateMolecules: [] };
+    }
+
+    for (const cisId of draftCisIds) {
+      const safety = await this.getDrugSafetyForPatient(patientId, cisId);
+      if (safety.status === 'BLOCKED' && safety.reason) {
+        const drugName = safety.reason.replace(/^INTERDICTION : (.+) contient .+$/, '$1').trim() || cisId;
+        allergyConflicts.push({ cisId, drugName, reason: safety.reason });
+        alerts.push(safety.reason);
+      }
+    }
+
+    if (draftCisIds.length >= 2) {
+      try {
+        const result = await this.neo4j.executeQuery(
+          `MATCH (d1:Drug)-[:CONTIENT]->(m:Molecule)
+           WHERE d1.cisId IN $cisIds
+           WITH m, collect(DISTINCT d1.name) AS drugNames
+           WHERE size(drugNames) > 1
+           RETURN m.name AS moleculeName, drugNames`,
+          { cisIds: draftCisIds },
+        );
+        for (const record of result.records) {
+          const moleculeName = String(record.get('moleculeName') ?? '');
+          const names = (record.get('drugNames') ?? []) as string[];
+          if (names.length > 1) {
+            duplicateMolecules.push({ moleculeName, drugNames: names });
+            alerts.push(`ALERTE : Doublon de molécule "${moleculeName}" entre ${names.join(', ')}.`);
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          '[Gardien] analyzeDraft doublons Neo4j error',
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
+
+    let status: DraftSafetyReport['status'] = 'OK';
+    if (allergyConflicts.length > 0) status = 'CRITICAL';
+    else if (duplicateMolecules.length > 0) status = 'CRITICAL'; // Doublon molécule = même gravité affichage (rouge)
+
+    return { status, alerts, allergyConflicts, duplicateMolecules };
   }
 
   /**
