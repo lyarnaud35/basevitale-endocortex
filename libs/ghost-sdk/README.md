@@ -4,6 +4,13 @@ SDK Frontend **Ghost Protocol** – Cerveau Unifié (Gardien C+ et Stratège B+)
 
 ---
 
+## Concepts clés
+
+**Le Backend décide, le Frontend affiche.**  
+Le SDK ne fait qu'exposer l'état et les intentions. Toute logique métier (sécurité, facturation, règles NGAP) est côté serveur. Tu envoies une intention (ex. valider une facture), le backend répond par un nouvel état.
+
+---
+
 ## Installation
 
 Dans ton app React/Next.js, le SDK est consommé via l’alias du monorepo `@basevitale/ghost-sdk`. Aucune installation npm supplémentaire : le workspace Nx fournit le package.
@@ -226,6 +233,61 @@ const { data } = usePosologyTemplate(selectedCis);
 
 ---
 
+## Cookbook (Recettes)
+
+### Comment chercher un médicament ?
+
+```tsx
+import { useDrugSearch, formatDrugPrice, formatDrugRefundRate } from '@basevitale/ghost-sdk';
+
+function SearchDrug() {
+  const { search, results, isLoading } = useDrugSearch({ limit: 20 });
+  return (
+    <>
+      <input placeholder="Doliprane…" onChange={(e) => search(e.target.value)} />
+      {results.map((d) => (
+        <li key={d.id}>{d.label} – {formatDrugPrice(d.price)}</li>
+      ))}
+    </>
+  );
+}
+```
+
+### Comment calculer un devis ?
+
+```tsx
+import { useBillingQuote } from '@basevitale/ghost-sdk';
+
+const mutate = useBillingQuote();
+mutate.mutate({ patientId: 'scenario-paul-normal', acts: ['C'], modifiers: ['NUIT'] });
+// onSuccess: data.total, data.lines
+```
+
+### Comment valider une facture ?
+
+```tsx
+import { useValidateInvoice } from '@basevitale/ghost-sdk';
+
+const { mutate, isPending } = useValidateInvoice();
+mutate({ patientId: 'scenario-paul-normal', acts: ['C'], modifiers: ['NUIT'] });
+// onSuccess: facture { id, totalAmount, status: 'VALIDATED' }
+```
+
+---
+
+## Glossaire
+
+| Terme | Description |
+|-------|-------------|
+| **Quote** | Devis – calcul temporaire (actes + majorations). Non persisté. |
+| **Invoice** | Facture – entité persistée après validation. Statuts : DRAFT, VALIDATED, TRANSMITTED, PAID. |
+| **Snapshot** | Contexte figé (âge, actes) au moment de la validation. Immuable (Ledger). |
+| **AMO** | Part obligatoire – montant Sécu. |
+| **MEG** | Majoration Enfant (< 6 ans). |
+| **NUIT** | Modificateur consultation de nuit. |
+
+---
+
 ## Autres exports
 
 - **`setBaseUrl(url)`** / **`getBaseUrl()`** – Configuration de l’URL de l’API.
@@ -234,5 +296,8 @@ const { data } = usePosologyTemplate(selectedCis);
 - **`useGetPatientDashboardState`** – Hook React Query pour le dashboard patient.
 - **`useFiscalPrediction(acts, options?)`** – Prédiction fiscale (détail complet) ; `useBillingSimulation` en est un alias simplifié.
 - **`useInvoiceLifecycle(invoiceId)`** – Cycle de vie facture (FSM) : statut, `availableActions`, `transition(action)`.
+- **`useValidateInvoice`** – Mutation pour valider une facture (Ledger).
+- **`useBillingQuote`** – Mutation pour calculer un devis.
+- **`useDailyActivity`** – Liste des factures du jour + CA.
 
-Types : `SecurityStatus`, `UseConsultationScannerOptions`, `UseConsultationScannerResult`, `FiscalPredictionResult`, `DrugSearchResult`, `PosologyTemplate`, `AnalyzeFullContextResponse`, `AnalyzeFullContextBody`, etc.
+Types : `BillingQuote`, `ValidateInvoiceInput`, `ValidateInvoiceResult`, `DrugResult`, `FiscalPredictionResult`, etc.

@@ -52,6 +52,12 @@ export class Neo4jIndexesService implements OnModuleInit {
         name: 'medication_name_index',
         query: 'CREATE INDEX medication_name_index IF NOT EXISTS FOR (m:Medication) ON (m.name)',
       },
+      // Full-Text hybride Drug|Molecule (recherche médicaments < 50ms, fautes de frappe)
+      {
+        name: 'drugSearch',
+        query:
+          'CREATE FULLTEXT INDEX drugSearch IF NOT EXISTS FOR (n:Drug|Molecule) ON EACH [n.name, n.cisId]',
+      },
     ];
 
     for (const index of indexes) {

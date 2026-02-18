@@ -54,6 +54,63 @@ export async function simulateBilling(
   return body?.data ?? body;
 }
 
+// =============================================================================
+// Devis (Quote) – POST /billing/quote
+// =============================================================================
+
+export interface QuoteLine {
+  label: string;
+  price: number;
+  type: 'ACT' | 'MODIFIER';
+}
+
+export interface BillingQuote {
+  lines: QuoteLine[];
+  totalAMO: number;
+  totalAMC: number;
+  total: number;
+  rulesApplied?: string[];
+}
+
+export interface BillingQuoteInput {
+  patientId?: string;
+  acts: string[];
+  modifiers?: string[];
+}
+
+export async function fetchBillingQuote(input: BillingQuoteInput): Promise<BillingQuote> {
+  const base = getBaseUrl();
+  const url = `${base}/api/billing/quote`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(res.statusText || 'Billing quote failed');
+  const body = await res.json();
+  return body?.data ?? body;
+}
+
+export const getBillingQuoteQueryKey = (input: BillingQuoteInput) =>
+  ['billing', 'quote', input.acts, input.patientId ?? null, input.modifiers ?? []] as const;
+
+/**
+ * Hook pour calculer un devis (useMutation).
+ * Ben passe les actes sélectionnés ; le backend retourne le devis détaillé.
+ */
+export function useBillingQuote(
+  options?: UseMutationOptions<BillingQuote, Error, BillingQuoteInput>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: fetchBillingQuote,
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: getBillingQuoteQueryKey(variables) });
+    },
+    ...options,
+  });
+}
+
 export const getFiscalPredictionQueryKey = (
   acts: string[],
   patientId?: string,
@@ -72,6 +129,19 @@ export interface FiscalPredictionFromContextResult extends FiscalPredictionResul
 export interface FiscalPredictionContextOverrides {
   age?: number;
   ald?: boolean;
+}
+
+/** Input pour validateInvoice – validation explicite depuis un Quote ou mode contexte. */
+export interface ValidateInvoiceInput {
+  patientId: string;
+  /** Rétrocompat : overrides pour mode contexte (âge, ALD). */
+  overrides?: FiscalPredictionContextOverrides;
+  age?: number;
+  ald?: boolean;
+  acts?: string[];
+  modifiers?: string[];
+  performedAt?: string;
+  consultationId?: string;
 }
 
 export async function fetchFiscalPredictionFromContext(
@@ -181,14 +251,25 @@ export interface ValidateInvoiceResult {
 }
 
 export async function validateInvoice(
-  patientId: string,
-  overrides?: FiscalPredictionContextOverrides,
+  input: string | ValidateInvoiceInput,
 ): Promise<ValidateInvoiceResult> {
+  const body =
+    typeof input === 'string'
+      ? { patientId: input }
+      : {
+          patientId: input.patientId,
+          age: input.age ?? input.overrides?.age,
+          ald: input.ald ?? input.overrides?.ald,
+          acts: input.acts,
+          modifiers: input.modifiers,
+          performedAt: input.performedAt,
+          consultationId: input.consultationId,
+        };
   const base = getBaseUrl();
   const res = await fetch(`${base}/api/billing/validate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ patientId, age: overrides?.age, ald: overrides?.ald }),
+    body: JSON.stringify(body),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -251,8 +332,7 @@ export function useValidateInvoice(options?: {
 }) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ patientId, overrides }: { patientId: string; overrides?: FiscalPredictionContextOverrides }) =>
-      validateInvoice(patientId, overrides),
+    mutationFn: (input: ValidateInvoiceInput | string) => validateInvoice(input),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: getDailyActivityQueryKey() });
       options?.onSuccess?.(data);

@@ -56,8 +56,10 @@ export {
   useDrugSearch,
   useDrugSearchByQuery,
   getDrugSearchQueryKey,
+  formatDrugPrice,
+  formatDrugRefundRate,
 } from './lib/drugSearch';
-export type { DrugSearchHit } from './lib/drugSearch';
+export type { DrugSearchHit, DrugResult } from './lib/drugSearch';
 export type { DrugSearchResult } from '@basevitale/shared';
 export {
   getPosologyTemplate,
@@ -67,6 +69,9 @@ export {
 export type { PosologyTemplate } from './lib/posology';
 export {
   simulateBilling,
+  fetchBillingQuote,
+  useBillingQuote,
+  getBillingQuoteQueryKey,
   useFiscalPrediction,
   useBillingSimulation,
   getFiscalPredictionQueryKey,
@@ -86,6 +91,10 @@ export {
   useInvoiceLifecycle,
 } from './lib/billing';
 export type {
+  BillingQuote,
+  QuoteLine,
+  BillingQuoteInput,
+  ValidateInvoiceInput,
   FiscalPredictionResult,
   FiscalPredictionFromContextResult,
   FiscalPredictionContextOverrides,

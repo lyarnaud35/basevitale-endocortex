@@ -53,7 +53,7 @@ export type BillingRules = $Result.DefaultSelection<Prisma.$BillingRulesPayload>
 /**
  * Model Invoice
  * Facture – Cristallisation du calcul (Grand Livre).
- * Jamais de Float pour l'argent : totalAmount en Decimal.
+ * Snapshot immuable : les montants ne sont JAMAIS recalculés à la lecture.
  */
 export type Invoice = $Result.DefaultSelection<Prisma.$InvoicePayload>
 /**
@@ -3332,6 +3332,7 @@ export namespace Prisma {
     medicalDocuments: number
     medicalReports: number
     billingEvents: number
+    invoices: number
   }
 
   export type ConsultationCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -3339,6 +3340,7 @@ export namespace Prisma {
     medicalDocuments?: boolean | ConsultationCountOutputTypeCountMedicalDocumentsArgs
     medicalReports?: boolean | ConsultationCountOutputTypeCountMedicalReportsArgs
     billingEvents?: boolean | ConsultationCountOutputTypeCountBillingEventsArgs
+    invoices?: boolean | ConsultationCountOutputTypeCountInvoicesArgs
   }
 
   // Custom InputTypes
@@ -3378,6 +3380,13 @@ export namespace Prisma {
    */
   export type ConsultationCountOutputTypeCountBillingEventsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: BillingEventWhereInput
+  }
+
+  /**
+   * ConsultationCountOutputType without action
+   */
+  export type ConsultationCountOutputTypeCountInvoicesArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: InvoiceWhereInput
   }
 
 
@@ -8200,6 +8209,7 @@ export namespace Prisma {
     medicalReports?: boolean | Consultation$medicalReportsArgs<ExtArgs>
     appointment?: boolean | Consultation$appointmentArgs<ExtArgs>
     billingEvents?: boolean | Consultation$billingEventsArgs<ExtArgs>
+    invoices?: boolean | Consultation$invoicesArgs<ExtArgs>
     _count?: boolean | ConsultationCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["consultation"]>
 
@@ -8243,6 +8253,7 @@ export namespace Prisma {
     medicalReports?: boolean | Consultation$medicalReportsArgs<ExtArgs>
     appointment?: boolean | Consultation$appointmentArgs<ExtArgs>
     billingEvents?: boolean | Consultation$billingEventsArgs<ExtArgs>
+    invoices?: boolean | Consultation$invoicesArgs<ExtArgs>
     _count?: boolean | ConsultationCountOutputTypeDefaultArgs<ExtArgs>
   }
   export type ConsultationIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -8258,6 +8269,7 @@ export namespace Prisma {
       medicalReports: Prisma.$MedicalReportPayload<ExtArgs>[]
       appointment: Prisma.$AppointmentPayload<ExtArgs> | null
       billingEvents: Prisma.$BillingEventPayload<ExtArgs>[]
+      invoices: Prisma.$InvoicePayload<ExtArgs>[]
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -8643,6 +8655,7 @@ export namespace Prisma {
     medicalReports<T extends Consultation$medicalReportsArgs<ExtArgs> = {}>(args?: Subset<T, Consultation$medicalReportsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$MedicalReportPayload<ExtArgs>, T, "findMany"> | Null>
     appointment<T extends Consultation$appointmentArgs<ExtArgs> = {}>(args?: Subset<T, Consultation$appointmentArgs<ExtArgs>>): Prisma__AppointmentClient<$Result.GetResult<Prisma.$AppointmentPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
     billingEvents<T extends Consultation$billingEventsArgs<ExtArgs> = {}>(args?: Subset<T, Consultation$billingEventsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$BillingEventPayload<ExtArgs>, T, "findMany"> | Null>
+    invoices<T extends Consultation$invoicesArgs<ExtArgs> = {}>(args?: Subset<T, Consultation$invoicesArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$InvoicePayload<ExtArgs>, T, "findMany"> | Null>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -9095,6 +9108,26 @@ export namespace Prisma {
     take?: number
     skip?: number
     distinct?: BillingEventScalarFieldEnum | BillingEventScalarFieldEnum[]
+  }
+
+  /**
+   * Consultation.invoices
+   */
+  export type Consultation$invoicesArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Invoice
+     */
+    select?: InvoiceSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: InvoiceInclude<ExtArgs> | null
+    where?: InvoiceWhereInput
+    orderBy?: InvoiceOrderByWithRelationInput | InvoiceOrderByWithRelationInput[]
+    cursor?: InvoiceWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: InvoiceScalarFieldEnum | InvoiceScalarFieldEnum[]
   }
 
   /**
@@ -10012,6 +10045,8 @@ export namespace Prisma {
     totalAmount: Decimal | null
     status: string | null
     rulesVersion: string | null
+    performedAt: Date | null
+    consultationId: string | null
     fseToken: string | null
     fseGeneratedAt: Date | null
     createdAt: Date | null
@@ -10024,6 +10059,8 @@ export namespace Prisma {
     totalAmount: Decimal | null
     status: string | null
     rulesVersion: string | null
+    performedAt: Date | null
+    consultationId: string | null
     fseToken: string | null
     fseGeneratedAt: Date | null
     createdAt: Date | null
@@ -10038,6 +10075,9 @@ export namespace Prisma {
     acts: number
     status: number
     rulesVersion: number
+    performedAt: number
+    contextSnapshot: number
+    consultationId: number
     fseToken: number
     fseGeneratedAt: number
     createdAt: number
@@ -10060,6 +10100,8 @@ export namespace Prisma {
     totalAmount?: true
     status?: true
     rulesVersion?: true
+    performedAt?: true
+    consultationId?: true
     fseToken?: true
     fseGeneratedAt?: true
     createdAt?: true
@@ -10072,6 +10114,8 @@ export namespace Prisma {
     totalAmount?: true
     status?: true
     rulesVersion?: true
+    performedAt?: true
+    consultationId?: true
     fseToken?: true
     fseGeneratedAt?: true
     createdAt?: true
@@ -10086,6 +10130,9 @@ export namespace Prisma {
     acts?: true
     status?: true
     rulesVersion?: true
+    performedAt?: true
+    contextSnapshot?: true
+    consultationId?: true
     fseToken?: true
     fseGeneratedAt?: true
     createdAt?: true
@@ -10187,6 +10234,9 @@ export namespace Prisma {
     acts: string[]
     status: string
     rulesVersion: string
+    performedAt: Date
+    contextSnapshot: JsonValue | null
+    consultationId: string | null
     fseToken: string | null
     fseGeneratedAt: Date | null
     createdAt: Date
@@ -10220,11 +10270,15 @@ export namespace Prisma {
     acts?: boolean
     status?: boolean
     rulesVersion?: boolean
+    performedAt?: boolean
+    contextSnapshot?: boolean
+    consultationId?: boolean
     fseToken?: boolean
     fseGeneratedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     patient?: boolean | Invoice$patientArgs<ExtArgs>
+    consultation?: boolean | Invoice$consultationArgs<ExtArgs>
   }, ExtArgs["result"]["invoice"]>
 
   export type InvoiceSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -10235,11 +10289,15 @@ export namespace Prisma {
     acts?: boolean
     status?: boolean
     rulesVersion?: boolean
+    performedAt?: boolean
+    contextSnapshot?: boolean
+    consultationId?: boolean
     fseToken?: boolean
     fseGeneratedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     patient?: boolean | Invoice$patientArgs<ExtArgs>
+    consultation?: boolean | Invoice$consultationArgs<ExtArgs>
   }, ExtArgs["result"]["invoice"]>
 
   export type InvoiceSelectScalar = {
@@ -10250,6 +10308,9 @@ export namespace Prisma {
     acts?: boolean
     status?: boolean
     rulesVersion?: boolean
+    performedAt?: boolean
+    contextSnapshot?: boolean
+    consultationId?: boolean
     fseToken?: boolean
     fseGeneratedAt?: boolean
     createdAt?: boolean
@@ -10258,15 +10319,18 @@ export namespace Prisma {
 
   export type InvoiceInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     patient?: boolean | Invoice$patientArgs<ExtArgs>
+    consultation?: boolean | Invoice$consultationArgs<ExtArgs>
   }
   export type InvoiceIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     patient?: boolean | Invoice$patientArgs<ExtArgs>
+    consultation?: boolean | Invoice$consultationArgs<ExtArgs>
   }
 
   export type $InvoicePayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "Invoice"
     objects: {
       patient: Prisma.$PatientPayload<ExtArgs> | null
+      consultation: Prisma.$ConsultationPayload<ExtArgs> | null
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -10276,6 +10340,9 @@ export namespace Prisma {
       acts: string[]
       status: string
       rulesVersion: string
+      performedAt: Date
+      contextSnapshot: Prisma.JsonValue | null
+      consultationId: string | null
       fseToken: string | null
       fseGeneratedAt: Date | null
       createdAt: Date
@@ -10645,6 +10712,7 @@ export namespace Prisma {
   export interface Prisma__InvoiceClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
     readonly [Symbol.toStringTag]: "PrismaPromise"
     patient<T extends Invoice$patientArgs<ExtArgs> = {}>(args?: Subset<T, Invoice$patientArgs<ExtArgs>>): Prisma__PatientClient<$Result.GetResult<Prisma.$PatientPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
+    consultation<T extends Invoice$consultationArgs<ExtArgs> = {}>(args?: Subset<T, Invoice$consultationArgs<ExtArgs>>): Prisma__ConsultationClient<$Result.GetResult<Prisma.$ConsultationPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -10681,6 +10749,9 @@ export namespace Prisma {
     readonly acts: FieldRef<"Invoice", 'String[]'>
     readonly status: FieldRef<"Invoice", 'String'>
     readonly rulesVersion: FieldRef<"Invoice", 'String'>
+    readonly performedAt: FieldRef<"Invoice", 'DateTime'>
+    readonly contextSnapshot: FieldRef<"Invoice", 'Json'>
+    readonly consultationId: FieldRef<"Invoice", 'String'>
     readonly fseToken: FieldRef<"Invoice", 'String'>
     readonly fseGeneratedAt: FieldRef<"Invoice", 'DateTime'>
     readonly createdAt: FieldRef<"Invoice", 'DateTime'>
@@ -11015,6 +11086,21 @@ export namespace Prisma {
      */
     include?: PatientInclude<ExtArgs> | null
     where?: PatientWhereInput
+  }
+
+  /**
+   * Invoice.consultation
+   */
+  export type Invoice$consultationArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Consultation
+     */
+    select?: ConsultationSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ConsultationInclude<ExtArgs> | null
+    where?: ConsultationWhereInput
   }
 
   /**
@@ -32709,6 +32795,9 @@ export namespace Prisma {
     acts: 'acts',
     status: 'status',
     rulesVersion: 'rulesVersion',
+    performedAt: 'performedAt',
+    contextSnapshot: 'contextSnapshot',
+    consultationId: 'consultationId',
     fseToken: 'fseToken',
     fseGeneratedAt: 'fseGeneratedAt',
     createdAt: 'createdAt',
@@ -33613,6 +33702,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportListRelationFilter
     appointment?: XOR<AppointmentNullableRelationFilter, AppointmentWhereInput> | null
     billingEvents?: BillingEventListRelationFilter
+    invoices?: InvoiceListRelationFilter
   }
 
   export type ConsultationOrderByWithRelationInput = {
@@ -33635,6 +33725,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportOrderByRelationAggregateInput
     appointment?: AppointmentOrderByWithRelationInput
     billingEvents?: BillingEventOrderByRelationAggregateInput
+    invoices?: InvoiceOrderByRelationAggregateInput
   }
 
   export type ConsultationWhereUniqueInput = Prisma.AtLeast<{
@@ -33660,6 +33751,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportListRelationFilter
     appointment?: XOR<AppointmentNullableRelationFilter, AppointmentWhereInput> | null
     billingEvents?: BillingEventListRelationFilter
+    invoices?: InvoiceListRelationFilter
   }, "id">
 
   export type ConsultationOrderByWithAggregationInput = {
@@ -33763,11 +33855,15 @@ export namespace Prisma {
     acts?: StringNullableListFilter<"Invoice">
     status?: StringFilter<"Invoice"> | string
     rulesVersion?: StringFilter<"Invoice"> | string
+    performedAt?: DateTimeFilter<"Invoice"> | Date | string
+    contextSnapshot?: JsonNullableFilter<"Invoice">
+    consultationId?: StringNullableFilter<"Invoice"> | string | null
     fseToken?: StringNullableFilter<"Invoice"> | string | null
     fseGeneratedAt?: DateTimeNullableFilter<"Invoice"> | Date | string | null
     createdAt?: DateTimeFilter<"Invoice"> | Date | string
     updatedAt?: DateTimeFilter<"Invoice"> | Date | string
     patient?: XOR<PatientNullableRelationFilter, PatientWhereInput> | null
+    consultation?: XOR<ConsultationNullableRelationFilter, ConsultationWhereInput> | null
   }
 
   export type InvoiceOrderByWithRelationInput = {
@@ -33778,11 +33874,15 @@ export namespace Prisma {
     acts?: SortOrder
     status?: SortOrder
     rulesVersion?: SortOrder
+    performedAt?: SortOrder
+    contextSnapshot?: SortOrderInput | SortOrder
+    consultationId?: SortOrderInput | SortOrder
     fseToken?: SortOrderInput | SortOrder
     fseGeneratedAt?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     patient?: PatientOrderByWithRelationInput
+    consultation?: ConsultationOrderByWithRelationInput
   }
 
   export type InvoiceWhereUniqueInput = Prisma.AtLeast<{
@@ -33796,11 +33896,15 @@ export namespace Prisma {
     acts?: StringNullableListFilter<"Invoice">
     status?: StringFilter<"Invoice"> | string
     rulesVersion?: StringFilter<"Invoice"> | string
+    performedAt?: DateTimeFilter<"Invoice"> | Date | string
+    contextSnapshot?: JsonNullableFilter<"Invoice">
+    consultationId?: StringNullableFilter<"Invoice"> | string | null
     fseToken?: StringNullableFilter<"Invoice"> | string | null
     fseGeneratedAt?: DateTimeNullableFilter<"Invoice"> | Date | string | null
     createdAt?: DateTimeFilter<"Invoice"> | Date | string
     updatedAt?: DateTimeFilter<"Invoice"> | Date | string
     patient?: XOR<PatientNullableRelationFilter, PatientWhereInput> | null
+    consultation?: XOR<ConsultationNullableRelationFilter, ConsultationWhereInput> | null
   }, "id">
 
   export type InvoiceOrderByWithAggregationInput = {
@@ -33811,6 +33915,9 @@ export namespace Prisma {
     acts?: SortOrder
     status?: SortOrder
     rulesVersion?: SortOrder
+    performedAt?: SortOrder
+    contextSnapshot?: SortOrderInput | SortOrder
+    consultationId?: SortOrderInput | SortOrder
     fseToken?: SortOrderInput | SortOrder
     fseGeneratedAt?: SortOrderInput | SortOrder
     createdAt?: SortOrder
@@ -33833,6 +33940,9 @@ export namespace Prisma {
     acts?: StringNullableListFilter<"Invoice">
     status?: StringWithAggregatesFilter<"Invoice"> | string
     rulesVersion?: StringWithAggregatesFilter<"Invoice"> | string
+    performedAt?: DateTimeWithAggregatesFilter<"Invoice"> | Date | string
+    contextSnapshot?: JsonNullableWithAggregatesFilter<"Invoice">
+    consultationId?: StringNullableWithAggregatesFilter<"Invoice"> | string | null
     fseToken?: StringNullableWithAggregatesFilter<"Invoice"> | string | null
     fseGeneratedAt?: DateTimeNullableWithAggregatesFilter<"Invoice"> | Date | string | null
     createdAt?: DateTimeWithAggregatesFilter<"Invoice"> | Date | string
@@ -36109,6 +36219,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationUncheckedCreateInput = {
@@ -36130,6 +36241,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUncheckedCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentUncheckedCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventUncheckedCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceUncheckedCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationUpdateInput = {
@@ -36151,6 +36263,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationUncheckedUpdateInput = {
@@ -36172,6 +36285,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUncheckedUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUncheckedUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUncheckedUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUncheckedUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationCreateManyInput = {
@@ -36284,11 +36398,14 @@ export namespace Prisma {
     acts?: InvoiceCreateactsInput | string[]
     status?: string
     rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
     fseToken?: string | null
     fseGeneratedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     patient?: PatientCreateNestedOneWithoutInvoicesInput
+    consultation?: ConsultationCreateNestedOneWithoutInvoicesInput
   }
 
   export type InvoiceUncheckedCreateInput = {
@@ -36299,6 +36416,9 @@ export namespace Prisma {
     acts?: InvoiceCreateactsInput | string[]
     status?: string
     rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    consultationId?: string | null
     fseToken?: string | null
     fseGeneratedAt?: Date | string | null
     createdAt?: Date | string
@@ -36312,11 +36432,14 @@ export namespace Prisma {
     acts?: InvoiceUpdateactsInput | string[]
     status?: StringFieldUpdateOperationsInput | string
     rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
     fseToken?: NullableStringFieldUpdateOperationsInput | string | null
     fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     patient?: PatientUpdateOneWithoutInvoicesNestedInput
+    consultation?: ConsultationUpdateOneWithoutInvoicesNestedInput
   }
 
   export type InvoiceUncheckedUpdateInput = {
@@ -36327,6 +36450,9 @@ export namespace Prisma {
     acts?: InvoiceUpdateactsInput | string[]
     status?: StringFieldUpdateOperationsInput | string
     rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    consultationId?: NullableStringFieldUpdateOperationsInput | string | null
     fseToken?: NullableStringFieldUpdateOperationsInput | string | null
     fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -36341,6 +36467,9 @@ export namespace Prisma {
     acts?: InvoiceCreateactsInput | string[]
     status?: string
     rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    consultationId?: string | null
     fseToken?: string | null
     fseGeneratedAt?: Date | string | null
     createdAt?: Date | string
@@ -36354,6 +36483,8 @@ export namespace Prisma {
     acts?: InvoiceUpdateactsInput | string[]
     status?: StringFieldUpdateOperationsInput | string
     rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
     fseToken?: NullableStringFieldUpdateOperationsInput | string | null
     fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -36368,6 +36499,9 @@ export namespace Prisma {
     acts?: InvoiceUpdateactsInput | string[]
     status?: StringFieldUpdateOperationsInput | string
     rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    consultationId?: NullableStringFieldUpdateOperationsInput | string | null
     fseToken?: NullableStringFieldUpdateOperationsInput | string | null
     fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -39071,6 +39205,9 @@ export namespace Prisma {
     acts?: SortOrder
     status?: SortOrder
     rulesVersion?: SortOrder
+    performedAt?: SortOrder
+    contextSnapshot?: SortOrder
+    consultationId?: SortOrder
     fseToken?: SortOrder
     fseGeneratedAt?: SortOrder
     createdAt?: SortOrder
@@ -39087,6 +39224,8 @@ export namespace Prisma {
     totalAmount?: SortOrder
     status?: SortOrder
     rulesVersion?: SortOrder
+    performedAt?: SortOrder
+    consultationId?: SortOrder
     fseToken?: SortOrder
     fseGeneratedAt?: SortOrder
     createdAt?: SortOrder
@@ -39099,6 +39238,8 @@ export namespace Prisma {
     totalAmount?: SortOrder
     status?: SortOrder
     rulesVersion?: SortOrder
+    performedAt?: SortOrder
+    consultationId?: SortOrder
     fseToken?: SortOrder
     fseGeneratedAt?: SortOrder
     createdAt?: SortOrder
@@ -40850,6 +40991,13 @@ export namespace Prisma {
     connect?: BillingEventWhereUniqueInput | BillingEventWhereUniqueInput[]
   }
 
+  export type InvoiceCreateNestedManyWithoutConsultationInput = {
+    create?: XOR<InvoiceCreateWithoutConsultationInput, InvoiceUncheckedCreateWithoutConsultationInput> | InvoiceCreateWithoutConsultationInput[] | InvoiceUncheckedCreateWithoutConsultationInput[]
+    connectOrCreate?: InvoiceCreateOrConnectWithoutConsultationInput | InvoiceCreateOrConnectWithoutConsultationInput[]
+    createMany?: InvoiceCreateManyConsultationInputEnvelope
+    connect?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+  }
+
   export type SemanticNodeUncheckedCreateNestedManyWithoutConsultationInput = {
     create?: XOR<SemanticNodeCreateWithoutConsultationInput, SemanticNodeUncheckedCreateWithoutConsultationInput> | SemanticNodeCreateWithoutConsultationInput[] | SemanticNodeUncheckedCreateWithoutConsultationInput[]
     connectOrCreate?: SemanticNodeCreateOrConnectWithoutConsultationInput | SemanticNodeCreateOrConnectWithoutConsultationInput[]
@@ -40882,6 +41030,13 @@ export namespace Prisma {
     connectOrCreate?: BillingEventCreateOrConnectWithoutConsultationInput | BillingEventCreateOrConnectWithoutConsultationInput[]
     createMany?: BillingEventCreateManyConsultationInputEnvelope
     connect?: BillingEventWhereUniqueInput | BillingEventWhereUniqueInput[]
+  }
+
+  export type InvoiceUncheckedCreateNestedManyWithoutConsultationInput = {
+    create?: XOR<InvoiceCreateWithoutConsultationInput, InvoiceUncheckedCreateWithoutConsultationInput> | InvoiceCreateWithoutConsultationInput[] | InvoiceUncheckedCreateWithoutConsultationInput[]
+    connectOrCreate?: InvoiceCreateOrConnectWithoutConsultationInput | InvoiceCreateOrConnectWithoutConsultationInput[]
+    createMany?: InvoiceCreateManyConsultationInputEnvelope
+    connect?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
   }
 
   export type NullableDateTimeFieldUpdateOperationsInput = {
@@ -40962,6 +41117,20 @@ export namespace Prisma {
     deleteMany?: BillingEventScalarWhereInput | BillingEventScalarWhereInput[]
   }
 
+  export type InvoiceUpdateManyWithoutConsultationNestedInput = {
+    create?: XOR<InvoiceCreateWithoutConsultationInput, InvoiceUncheckedCreateWithoutConsultationInput> | InvoiceCreateWithoutConsultationInput[] | InvoiceUncheckedCreateWithoutConsultationInput[]
+    connectOrCreate?: InvoiceCreateOrConnectWithoutConsultationInput | InvoiceCreateOrConnectWithoutConsultationInput[]
+    upsert?: InvoiceUpsertWithWhereUniqueWithoutConsultationInput | InvoiceUpsertWithWhereUniqueWithoutConsultationInput[]
+    createMany?: InvoiceCreateManyConsultationInputEnvelope
+    set?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+    disconnect?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+    delete?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+    connect?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+    update?: InvoiceUpdateWithWhereUniqueWithoutConsultationInput | InvoiceUpdateWithWhereUniqueWithoutConsultationInput[]
+    updateMany?: InvoiceUpdateManyWithWhereWithoutConsultationInput | InvoiceUpdateManyWithWhereWithoutConsultationInput[]
+    deleteMany?: InvoiceScalarWhereInput | InvoiceScalarWhereInput[]
+  }
+
   export type SemanticNodeUncheckedUpdateManyWithoutConsultationNestedInput = {
     create?: XOR<SemanticNodeCreateWithoutConsultationInput, SemanticNodeUncheckedCreateWithoutConsultationInput> | SemanticNodeCreateWithoutConsultationInput[] | SemanticNodeUncheckedCreateWithoutConsultationInput[]
     connectOrCreate?: SemanticNodeCreateOrConnectWithoutConsultationInput | SemanticNodeCreateOrConnectWithoutConsultationInput[]
@@ -41028,6 +41197,20 @@ export namespace Prisma {
     deleteMany?: BillingEventScalarWhereInput | BillingEventScalarWhereInput[]
   }
 
+  export type InvoiceUncheckedUpdateManyWithoutConsultationNestedInput = {
+    create?: XOR<InvoiceCreateWithoutConsultationInput, InvoiceUncheckedCreateWithoutConsultationInput> | InvoiceCreateWithoutConsultationInput[] | InvoiceUncheckedCreateWithoutConsultationInput[]
+    connectOrCreate?: InvoiceCreateOrConnectWithoutConsultationInput | InvoiceCreateOrConnectWithoutConsultationInput[]
+    upsert?: InvoiceUpsertWithWhereUniqueWithoutConsultationInput | InvoiceUpsertWithWhereUniqueWithoutConsultationInput[]
+    createMany?: InvoiceCreateManyConsultationInputEnvelope
+    set?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+    disconnect?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+    delete?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+    connect?: InvoiceWhereUniqueInput | InvoiceWhereUniqueInput[]
+    update?: InvoiceUpdateWithWhereUniqueWithoutConsultationInput | InvoiceUpdateWithWhereUniqueWithoutConsultationInput[]
+    updateMany?: InvoiceUpdateManyWithWhereWithoutConsultationInput | InvoiceUpdateManyWithWhereWithoutConsultationInput[]
+    deleteMany?: InvoiceScalarWhereInput | InvoiceScalarWhereInput[]
+  }
+
   export type InvoiceCreateactsInput = {
     set: string[]
   }
@@ -41036,6 +41219,12 @@ export namespace Prisma {
     create?: XOR<PatientCreateWithoutInvoicesInput, PatientUncheckedCreateWithoutInvoicesInput>
     connectOrCreate?: PatientCreateOrConnectWithoutInvoicesInput
     connect?: PatientWhereUniqueInput
+  }
+
+  export type ConsultationCreateNestedOneWithoutInvoicesInput = {
+    create?: XOR<ConsultationCreateWithoutInvoicesInput, ConsultationUncheckedCreateWithoutInvoicesInput>
+    connectOrCreate?: ConsultationCreateOrConnectWithoutInvoicesInput
+    connect?: ConsultationWhereUniqueInput
   }
 
   export type DecimalFieldUpdateOperationsInput = {
@@ -41059,6 +41248,16 @@ export namespace Prisma {
     delete?: PatientWhereInput | boolean
     connect?: PatientWhereUniqueInput
     update?: XOR<XOR<PatientUpdateToOneWithWhereWithoutInvoicesInput, PatientUpdateWithoutInvoicesInput>, PatientUncheckedUpdateWithoutInvoicesInput>
+  }
+
+  export type ConsultationUpdateOneWithoutInvoicesNestedInput = {
+    create?: XOR<ConsultationCreateWithoutInvoicesInput, ConsultationUncheckedCreateWithoutInvoicesInput>
+    connectOrCreate?: ConsultationCreateOrConnectWithoutInvoicesInput
+    upsert?: ConsultationUpsertWithoutInvoicesInput
+    disconnect?: ConsultationWhereInput | boolean
+    delete?: ConsultationWhereInput | boolean
+    connect?: ConsultationWhereUniqueInput
+    update?: XOR<XOR<ConsultationUpdateToOneWithWhereWithoutInvoicesInput, ConsultationUpdateWithoutInvoicesInput>, ConsultationUncheckedUpdateWithoutInvoicesInput>
   }
 
   export type BillingEventCreateevidenceNodeIdsInput = {
@@ -42255,6 +42454,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationUncheckedCreateWithoutPatientInput = {
@@ -42275,6 +42475,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUncheckedCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentUncheckedCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventUncheckedCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceUncheckedCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationCreateOrConnectWithoutPatientInput = {
@@ -42634,10 +42835,13 @@ export namespace Prisma {
     acts?: InvoiceCreateactsInput | string[]
     status?: string
     rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
     fseToken?: string | null
     fseGeneratedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    consultation?: ConsultationCreateNestedOneWithoutInvoicesInput
   }
 
   export type InvoiceUncheckedCreateWithoutPatientInput = {
@@ -42647,6 +42851,9 @@ export namespace Prisma {
     acts?: InvoiceCreateactsInput | string[]
     status?: string
     rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    consultationId?: string | null
     fseToken?: string | null
     fseGeneratedAt?: Date | string | null
     createdAt?: Date | string
@@ -43007,6 +43214,9 @@ export namespace Prisma {
     acts?: StringNullableListFilter<"Invoice">
     status?: StringFilter<"Invoice"> | string
     rulesVersion?: StringFilter<"Invoice"> | string
+    performedAt?: DateTimeFilter<"Invoice"> | Date | string
+    contextSnapshot?: JsonNullableFilter<"Invoice">
+    consultationId?: StringNullableFilter<"Invoice"> | string | null
     fseToken?: StringNullableFilter<"Invoice"> | string | null
     fseGeneratedAt?: DateTimeNullableFilter<"Invoice"> | Date | string | null
     createdAt?: DateTimeFilter<"Invoice"> | Date | string
@@ -43154,6 +43364,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationUncheckedCreateWithoutSemanticNodesInput = {
@@ -43174,6 +43385,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUncheckedCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentUncheckedCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventUncheckedCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceUncheckedCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationCreateOrConnectWithoutSemanticNodesInput = {
@@ -43325,6 +43537,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationUncheckedUpdateWithoutSemanticNodesInput = {
@@ -43345,6 +43558,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUncheckedUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUncheckedUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUncheckedUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUncheckedUpdateManyWithoutConsultationNestedInput
   }
 
   export type SemanticNodeCreateWithoutSourceRelationsInput = {
@@ -43813,6 +44027,48 @@ export namespace Prisma {
     skipDuplicates?: boolean
   }
 
+  export type InvoiceCreateWithoutConsultationInput = {
+    id?: string
+    totalAmount: Decimal | DecimalJsLike | number | string
+    breakdown: JsonNullValueInput | InputJsonValue
+    acts?: InvoiceCreateactsInput | string[]
+    status?: string
+    rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    fseToken?: string | null
+    fseGeneratedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    patient?: PatientCreateNestedOneWithoutInvoicesInput
+  }
+
+  export type InvoiceUncheckedCreateWithoutConsultationInput = {
+    id?: string
+    patientId?: string | null
+    totalAmount: Decimal | DecimalJsLike | number | string
+    breakdown: JsonNullValueInput | InputJsonValue
+    acts?: InvoiceCreateactsInput | string[]
+    status?: string
+    rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    fseToken?: string | null
+    fseGeneratedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type InvoiceCreateOrConnectWithoutConsultationInput = {
+    where: InvoiceWhereUniqueInput
+    create: XOR<InvoiceCreateWithoutConsultationInput, InvoiceUncheckedCreateWithoutConsultationInput>
+  }
+
+  export type InvoiceCreateManyConsultationInputEnvelope = {
+    data: InvoiceCreateManyConsultationInput | InvoiceCreateManyConsultationInput[]
+    skipDuplicates?: boolean
+  }
+
   export type PatientUpsertWithoutConsultationsInput = {
     update: XOR<PatientUpdateWithoutConsultationsInput, PatientUncheckedUpdateWithoutConsultationsInput>
     create: XOR<PatientCreateWithoutConsultationsInput, PatientUncheckedCreateWithoutConsultationsInput>
@@ -44018,6 +44274,22 @@ export namespace Prisma {
     transmittedAt?: DateTimeNullableFilter<"BillingEvent"> | Date | string | null
   }
 
+  export type InvoiceUpsertWithWhereUniqueWithoutConsultationInput = {
+    where: InvoiceWhereUniqueInput
+    update: XOR<InvoiceUpdateWithoutConsultationInput, InvoiceUncheckedUpdateWithoutConsultationInput>
+    create: XOR<InvoiceCreateWithoutConsultationInput, InvoiceUncheckedCreateWithoutConsultationInput>
+  }
+
+  export type InvoiceUpdateWithWhereUniqueWithoutConsultationInput = {
+    where: InvoiceWhereUniqueInput
+    data: XOR<InvoiceUpdateWithoutConsultationInput, InvoiceUncheckedUpdateWithoutConsultationInput>
+  }
+
+  export type InvoiceUpdateManyWithWhereWithoutConsultationInput = {
+    where: InvoiceScalarWhereInput
+    data: XOR<InvoiceUpdateManyMutationInput, InvoiceUncheckedUpdateManyWithoutConsultationInput>
+  }
+
   export type PatientCreateWithoutInvoicesInput = {
     id?: string
     insToken: string
@@ -44079,6 +44351,53 @@ export namespace Prisma {
   export type PatientCreateOrConnectWithoutInvoicesInput = {
     where: PatientWhereUniqueInput
     create: XOR<PatientCreateWithoutInvoicesInput, PatientUncheckedCreateWithoutInvoicesInput>
+  }
+
+  export type ConsultationCreateWithoutInvoicesInput = {
+    id?: string
+    consultationDate?: Date | string
+    startTime: Date | string
+    endTime?: Date | string | null
+    status?: string
+    rawTranscript?: string | null
+    rawText?: string | null
+    draftData: JsonNullValueInput | InputJsonValue
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    validatedAt?: Date | string | null
+    createdBy: string
+    patient: PatientCreateNestedOneWithoutConsultationsInput
+    semanticNodes?: SemanticNodeCreateNestedManyWithoutConsultationInput
+    medicalDocuments?: MedicalDocumentCreateNestedManyWithoutConsultationInput
+    medicalReports?: MedicalReportCreateNestedManyWithoutConsultationInput
+    appointment?: AppointmentCreateNestedOneWithoutConsultationInput
+    billingEvents?: BillingEventCreateNestedManyWithoutConsultationInput
+  }
+
+  export type ConsultationUncheckedCreateWithoutInvoicesInput = {
+    id?: string
+    patientId: string
+    consultationDate?: Date | string
+    startTime: Date | string
+    endTime?: Date | string | null
+    status?: string
+    rawTranscript?: string | null
+    rawText?: string | null
+    draftData: JsonNullValueInput | InputJsonValue
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    validatedAt?: Date | string | null
+    createdBy: string
+    semanticNodes?: SemanticNodeUncheckedCreateNestedManyWithoutConsultationInput
+    medicalDocuments?: MedicalDocumentUncheckedCreateNestedManyWithoutConsultationInput
+    medicalReports?: MedicalReportUncheckedCreateNestedManyWithoutConsultationInput
+    appointment?: AppointmentUncheckedCreateNestedOneWithoutConsultationInput
+    billingEvents?: BillingEventUncheckedCreateNestedManyWithoutConsultationInput
+  }
+
+  export type ConsultationCreateOrConnectWithoutInvoicesInput = {
+    where: ConsultationWhereUniqueInput
+    create: XOR<ConsultationCreateWithoutInvoicesInput, ConsultationUncheckedCreateWithoutInvoicesInput>
   }
 
   export type PatientUpsertWithoutInvoicesInput = {
@@ -44150,6 +44469,59 @@ export namespace Prisma {
     allergies?: AllergyUncheckedUpdateManyWithoutPatientNestedInput
   }
 
+  export type ConsultationUpsertWithoutInvoicesInput = {
+    update: XOR<ConsultationUpdateWithoutInvoicesInput, ConsultationUncheckedUpdateWithoutInvoicesInput>
+    create: XOR<ConsultationCreateWithoutInvoicesInput, ConsultationUncheckedCreateWithoutInvoicesInput>
+    where?: ConsultationWhereInput
+  }
+
+  export type ConsultationUpdateToOneWithWhereWithoutInvoicesInput = {
+    where?: ConsultationWhereInput
+    data: XOR<ConsultationUpdateWithoutInvoicesInput, ConsultationUncheckedUpdateWithoutInvoicesInput>
+  }
+
+  export type ConsultationUpdateWithoutInvoicesInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    consultationDate?: DateTimeFieldUpdateOperationsInput | Date | string
+    startTime?: DateTimeFieldUpdateOperationsInput | Date | string
+    endTime?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    rawTranscript?: NullableStringFieldUpdateOperationsInput | string | null
+    rawText?: NullableStringFieldUpdateOperationsInput | string | null
+    draftData?: JsonNullValueInput | InputJsonValue
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    validatedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdBy?: StringFieldUpdateOperationsInput | string
+    patient?: PatientUpdateOneRequiredWithoutConsultationsNestedInput
+    semanticNodes?: SemanticNodeUpdateManyWithoutConsultationNestedInput
+    medicalDocuments?: MedicalDocumentUpdateManyWithoutConsultationNestedInput
+    medicalReports?: MedicalReportUpdateManyWithoutConsultationNestedInput
+    appointment?: AppointmentUpdateOneWithoutConsultationNestedInput
+    billingEvents?: BillingEventUpdateManyWithoutConsultationNestedInput
+  }
+
+  export type ConsultationUncheckedUpdateWithoutInvoicesInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    patientId?: StringFieldUpdateOperationsInput | string
+    consultationDate?: DateTimeFieldUpdateOperationsInput | Date | string
+    startTime?: DateTimeFieldUpdateOperationsInput | Date | string
+    endTime?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    rawTranscript?: NullableStringFieldUpdateOperationsInput | string | null
+    rawText?: NullableStringFieldUpdateOperationsInput | string | null
+    draftData?: JsonNullValueInput | InputJsonValue
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    validatedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdBy?: StringFieldUpdateOperationsInput | string
+    semanticNodes?: SemanticNodeUncheckedUpdateManyWithoutConsultationNestedInput
+    medicalDocuments?: MedicalDocumentUncheckedUpdateManyWithoutConsultationNestedInput
+    medicalReports?: MedicalReportUncheckedUpdateManyWithoutConsultationNestedInput
+    appointment?: AppointmentUncheckedUpdateOneWithoutConsultationNestedInput
+    billingEvents?: BillingEventUncheckedUpdateManyWithoutConsultationNestedInput
+  }
+
   export type ConsultationCreateWithoutBillingEventsInput = {
     id?: string
     consultationDate?: Date | string
@@ -44168,6 +44540,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentCreateNestedManyWithoutConsultationInput
     medicalReports?: MedicalReportCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentCreateNestedOneWithoutConsultationInput
+    invoices?: InvoiceCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationUncheckedCreateWithoutBillingEventsInput = {
@@ -44188,6 +44561,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUncheckedCreateNestedManyWithoutConsultationInput
     medicalReports?: MedicalReportUncheckedCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentUncheckedCreateNestedOneWithoutConsultationInput
+    invoices?: InvoiceUncheckedCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationCreateOrConnectWithoutBillingEventsInput = {
@@ -44224,6 +44598,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUpdateManyWithoutConsultationNestedInput
     medicalReports?: MedicalReportUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUpdateOneWithoutConsultationNestedInput
+    invoices?: InvoiceUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationUncheckedUpdateWithoutBillingEventsInput = {
@@ -44244,6 +44619,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUncheckedUpdateManyWithoutConsultationNestedInput
     medicalReports?: MedicalReportUncheckedUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUncheckedUpdateOneWithoutConsultationNestedInput
+    invoices?: InvoiceUncheckedUpdateManyWithoutConsultationNestedInput
   }
 
   export type PatientCreateWithoutAllergiesInput = {
@@ -44459,6 +44835,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationUncheckedCreateWithoutMedicalDocumentsInput = {
@@ -44479,6 +44856,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUncheckedCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentUncheckedCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventUncheckedCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceUncheckedCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationCreateOrConnectWithoutMedicalDocumentsInput = {
@@ -44756,6 +45134,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationUncheckedUpdateWithoutMedicalDocumentsInput = {
@@ -44776,6 +45155,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUncheckedUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUncheckedUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUncheckedUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUncheckedUpdateManyWithoutConsultationNestedInput
   }
 
   export type PrescriptionUpsertWithoutDocumentInput = {
@@ -45404,6 +45784,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationUncheckedCreateWithoutMedicalReportsInput = {
@@ -45424,6 +45805,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUncheckedCreateNestedManyWithoutConsultationInput
     appointment?: AppointmentUncheckedCreateNestedOneWithoutConsultationInput
     billingEvents?: BillingEventUncheckedCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceUncheckedCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationCreateOrConnectWithoutMedicalReportsInput = {
@@ -45576,6 +45958,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationUncheckedUpdateWithoutMedicalReportsInput = {
@@ -45596,6 +45979,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUncheckedUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUncheckedUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUncheckedUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUncheckedUpdateManyWithoutConsultationNestedInput
   }
 
   export type PatientCreateWithoutLaboratoryResultsInput = {
@@ -46119,6 +46503,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentCreateNestedManyWithoutConsultationInput
     medicalReports?: MedicalReportCreateNestedManyWithoutConsultationInput
     billingEvents?: BillingEventCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationUncheckedCreateWithoutAppointmentInput = {
@@ -46139,6 +46524,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUncheckedCreateNestedManyWithoutConsultationInput
     medicalReports?: MedicalReportUncheckedCreateNestedManyWithoutConsultationInput
     billingEvents?: BillingEventUncheckedCreateNestedManyWithoutConsultationInput
+    invoices?: InvoiceUncheckedCreateNestedManyWithoutConsultationInput
   }
 
   export type ConsultationCreateOrConnectWithoutAppointmentInput = {
@@ -46272,6 +46658,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUpdateManyWithoutConsultationNestedInput
     medicalReports?: MedicalReportUpdateManyWithoutConsultationNestedInput
     billingEvents?: BillingEventUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationUncheckedUpdateWithoutAppointmentInput = {
@@ -46292,6 +46679,7 @@ export namespace Prisma {
     medicalDocuments?: MedicalDocumentUncheckedUpdateManyWithoutConsultationNestedInput
     medicalReports?: MedicalReportUncheckedUpdateManyWithoutConsultationNestedInput
     billingEvents?: BillingEventUncheckedUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUncheckedUpdateManyWithoutConsultationNestedInput
   }
 
   export type AppointmentReminderUpsertWithWhereUniqueWithoutAppointmentInput = {
@@ -47575,6 +47963,9 @@ export namespace Prisma {
     acts?: InvoiceCreateactsInput | string[]
     status?: string
     rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    consultationId?: string | null
     fseToken?: string | null
     fseGeneratedAt?: Date | string | null
     createdAt?: Date | string
@@ -47599,6 +47990,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationUncheckedUpdateWithoutPatientInput = {
@@ -47619,6 +48011,7 @@ export namespace Prisma {
     medicalReports?: MedicalReportUncheckedUpdateManyWithoutConsultationNestedInput
     appointment?: AppointmentUncheckedUpdateOneWithoutConsultationNestedInput
     billingEvents?: BillingEventUncheckedUpdateManyWithoutConsultationNestedInput
+    invoices?: InvoiceUncheckedUpdateManyWithoutConsultationNestedInput
   }
 
   export type ConsultationUncheckedUpdateManyWithoutPatientInput = {
@@ -48025,10 +48418,13 @@ export namespace Prisma {
     acts?: InvoiceUpdateactsInput | string[]
     status?: StringFieldUpdateOperationsInput | string
     rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
     fseToken?: NullableStringFieldUpdateOperationsInput | string | null
     fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    consultation?: ConsultationUpdateOneWithoutInvoicesNestedInput
   }
 
   export type InvoiceUncheckedUpdateWithoutPatientInput = {
@@ -48038,6 +48434,9 @@ export namespace Prisma {
     acts?: InvoiceUpdateactsInput | string[]
     status?: StringFieldUpdateOperationsInput | string
     rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    consultationId?: NullableStringFieldUpdateOperationsInput | string | null
     fseToken?: NullableStringFieldUpdateOperationsInput | string | null
     fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -48051,6 +48450,9 @@ export namespace Prisma {
     acts?: InvoiceUpdateactsInput | string[]
     status?: StringFieldUpdateOperationsInput | string
     rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    consultationId?: NullableStringFieldUpdateOperationsInput | string | null
     fseToken?: NullableStringFieldUpdateOperationsInput | string | null
     fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -48192,6 +48594,22 @@ export namespace Prisma {
     evidenceNodeIds?: BillingEventCreateevidenceNodeIdsInput | string[]
     createdAt?: Date | string
     transmittedAt?: Date | string | null
+  }
+
+  export type InvoiceCreateManyConsultationInput = {
+    id?: string
+    patientId?: string | null
+    totalAmount: Decimal | DecimalJsLike | number | string
+    breakdown: JsonNullValueInput | InputJsonValue
+    acts?: InvoiceCreateactsInput | string[]
+    status?: string
+    rulesVersion: string
+    performedAt?: Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    fseToken?: string | null
+    fseGeneratedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type SemanticNodeUpdateWithoutConsultationInput = {
@@ -48377,6 +48795,54 @@ export namespace Prisma {
     evidenceNodeIds?: BillingEventUpdateevidenceNodeIdsInput | string[]
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     transmittedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  }
+
+  export type InvoiceUpdateWithoutConsultationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    totalAmount?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    breakdown?: JsonNullValueInput | InputJsonValue
+    acts?: InvoiceUpdateactsInput | string[]
+    status?: StringFieldUpdateOperationsInput | string
+    rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    fseToken?: NullableStringFieldUpdateOperationsInput | string | null
+    fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    patient?: PatientUpdateOneWithoutInvoicesNestedInput
+  }
+
+  export type InvoiceUncheckedUpdateWithoutConsultationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    patientId?: NullableStringFieldUpdateOperationsInput | string | null
+    totalAmount?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    breakdown?: JsonNullValueInput | InputJsonValue
+    acts?: InvoiceUpdateactsInput | string[]
+    status?: StringFieldUpdateOperationsInput | string
+    rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    fseToken?: NullableStringFieldUpdateOperationsInput | string | null
+    fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type InvoiceUncheckedUpdateManyWithoutConsultationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    patientId?: NullableStringFieldUpdateOperationsInput | string | null
+    totalAmount?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    breakdown?: JsonNullValueInput | InputJsonValue
+    acts?: InvoiceUpdateactsInput | string[]
+    status?: StringFieldUpdateOperationsInput | string
+    rulesVersion?: StringFieldUpdateOperationsInput | string
+    performedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    contextSnapshot?: NullableJsonNullValueInput | InputJsonValue
+    fseToken?: NullableStringFieldUpdateOperationsInput | string | null
+    fseGeneratedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type DocumentAttachmentCreateManyDocumentInput = {

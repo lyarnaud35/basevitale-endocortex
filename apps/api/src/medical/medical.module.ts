@@ -8,6 +8,7 @@ import { DrugsController } from './drugs.controller';
 /**
  * Module C+ (Security Guardian) – Deep Roots.
  * Ontologie BDPM (DrugService) + Packs (CIP) + validation allergies (Guardian, SecurityService).
+ * GET /drugs/search est exposé par DrugsModule (index drugSearch).
  */
 @Module({
   imports: [Neo4jModule, forwardRef(() => KnowledgeGraphModule)],

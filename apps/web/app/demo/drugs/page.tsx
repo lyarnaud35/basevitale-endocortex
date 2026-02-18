@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { setBaseUrl, useDrugSearch } from '@basevitale/ghost-sdk';
+import { setBaseUrl, useDrugSearch, formatDrugPrice, formatDrugRefundRate } from '@basevitale/ghost-sdk';
 import { ScenarioSelector } from '../components/ScenarioSelector';
+import { useState } from 'react';
 
 const API_BASE =
   typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
@@ -13,29 +13,25 @@ setBaseUrl(API_BASE);
 export default function DrugSearchDemoPage() {
   const [patientId, setPatientId] = useState<string | undefined>('scenario-jean-peuplu');
 
-  const { search, results, isLoading, error, debouncedQuery } = useDrugSearch({
-    limit: 30,
-    includeMolecules: true,
-    patientId,
-    includePacks: true,
-  });
+  const { search, results, isLoading, error, debouncedQuery } = useDrugSearch();
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-10 font-sans">
       <h1 className="text-2xl font-semibold mb-2">
-        Moteur de Recherche Médicament (SYNAPSE v201)
+        Moteur de Recherche Médicament (index drugSearch)
       </h1>
       <p className="text-zinc-400 text-sm mb-6">
-        Recherche fuzzy (ex. Doliplane → Doliprane). Avec un patient : statut sécurité (OK / BLOQUÉ) et Packs (prix).
+        Recherche Full-Text type Google (ex. Doliplane → Doliprane, Paracéta → Doliprane). &lt; 50ms.
       </p>
 
       <div className="mb-6 max-w-md">
         <ScenarioSelector value={patientId} onChange={setPatientId} />
       </div>
+      <p className="text-zinc-500 text-xs mb-2">Patient (affiché pour cohérence UI — sécurité/packs sur autre endpoint)</p>
 
       <input
         type="text"
-        placeholder="Tapez &quot;Doli&quot; ou &quot;Amoxi&quot;..."
+        placeholder="Tapez &quot;Doli&quot; ou &quot;Paracéta&quot;..."
         onChange={(e) => search(e.target.value)}
         className="w-full max-w-xl border border-zinc-600 rounded-lg px-3 py-2 bg-zinc-900 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-600/50"
       />
@@ -53,60 +49,24 @@ export default function DrugSearchDemoPage() {
       <ul className="mt-6 space-y-3 max-w-3xl">
         {results.map((drug, index) => (
           <li
-            key={`${drug.id}-${drug.type ?? 'Brand'}-${index}`}
+            key={`${drug.code}-${index}`}
             className="flex flex-col border-b border-zinc-700 pb-3"
           >
             <div className="flex justify-between items-center flex-wrap gap-2">
               <span className="text-zinc-100 font-medium">{drug.label}</span>
-              <div className="flex items-center gap-2">
-                {(drug.safety || patientId) && (
-                  <span
-                    className={
-                      drug.safety?.status === 'BLOCKED'
-                        ? 'bg-red-600 text-white px-2 py-0.5 rounded text-xs font-medium'
-                        : drug.safety?.status === 'WARNING'
-                          ? 'bg-amber-600 text-white px-2 py-0.5 rounded text-xs font-medium'
-                          : drug.safety?.status === 'SAFE'
-                            ? 'bg-emerald-600/80 text-white px-2 py-0.5 rounded text-xs font-medium'
-                            : 'bg-zinc-600 text-zinc-300 px-2 py-0.5 rounded text-xs font-medium'
-                    }
-                  >
-                    {drug.safety?.status === 'BLOCKED'
-                      ? 'BLOQUÉ'
-                      : drug.safety?.status === 'WARNING'
-                        ? 'ATTENTION'
-                        : drug.safety?.status === 'SAFE'
-                          ? 'OK'
-                          : patientId
-                            ? '…'
-                            : null}
-                  </span>
-                )}
-                <span
-                  className={
-                    drug.type === 'Brand'
-                      ? 'bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded text-xs font-medium'
-                      : 'bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded text-xs font-medium'
-                  }
-                >
-                  {drug.type === 'Brand' ? 'Marque' : 'Générique'}
-                </span>
-              </div>
+              <span className="bg-zinc-600 text-zinc-300 px-2 py-0.5 rounded text-xs font-medium">
+                {drug.forme || '—'}
+              </span>
             </div>
-            {drug.safety?.status === 'BLOCKED' && drug.safety.reason && (
-              <p className="text-red-400 text-sm mt-1">{drug.safety.reason}</p>
-            )}
-            {drug.molecules && drug.molecules.length > 0 && (
+            <p className="text-zinc-500 text-xs mt-0.5">CIS {drug.code}</p>
+            {drug.substances && drug.substances.length > 0 && (
               <p className="text-zinc-500 text-sm mt-1">
-                Contient : {drug.molecules.map((m) => `${m.name}${m.dosage ? ` (${m.dosage})` : ''}`).join(', ')}
+                Contient : {drug.substances.join(', ')}
               </p>
             )}
-            {drug.packs && drug.packs.length > 0 && (
-              <p className="text-zinc-500 text-xs mt-1">
-                Packs : {drug.packs.slice(0, 3).map((p) => `${p.cip13}${p.prix != null ? ` · ${p.prix}€` : ''}`).join(' · ')}
-                {drug.packs.length > 3 && ` (+${drug.packs.length - 3})`}
-              </p>
-            )}
+            <p className="text-zinc-500 text-xs mt-1">
+              {formatDrugPrice(drug.price)} · {formatDrugRefundRate(drug.refundRate)}
+            </p>
           </li>
         ))}
       </ul>

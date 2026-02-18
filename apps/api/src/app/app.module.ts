@@ -54,6 +54,7 @@ import { LlmModule } from '../llm/llm.module';
 import { OracleModule } from '../oracle/oracle.module';
 import { PatientModule } from '../patient/patient.module';
 import { GhostEventModule } from '../ghost-event/ghost-event.module';
+import { DrugsModule } from '../drugs/drugs.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { GhostEventModule } from '../ghost-event/ghost-event.module';
     ScribeModule,
     SecurityModule,
     IdentityModule,
+    DrugsModule,
     KnowledgeGraphModule,
     PrescriptionDraftModule,
     BillingModule,

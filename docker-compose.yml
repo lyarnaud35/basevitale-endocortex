@@ -22,7 +22,7 @@ services:
       - basevitale-network
 
   neo4j:
-    image: neo4j:latest
+    image: neo4j:5.15
     container_name: basevitale-neo4j
     restart: unless-stopped
     environment:

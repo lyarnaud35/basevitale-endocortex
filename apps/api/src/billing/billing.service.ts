@@ -19,6 +19,22 @@ export interface BreakdownLine {
   ruleId?: string;
 }
 
+/** Ligne du devis (Quote) – type ACT ou MODIFIER. */
+export interface QuoteLine {
+  label: string;
+  price: number;
+  type: 'ACT' | 'MODIFIER';
+}
+
+/** Devis (Réacteur Fiscal) – prêt pour l'affichage. */
+export interface BillingQuote {
+  lines: QuoteLine[];
+  totalAMO: number;
+  totalAMC: number;
+  total: number;
+  rulesApplied?: string[];
+}
+
 export interface SimulateBillingResult {
   total: number;
   breakdown: BreakdownLine[];
@@ -201,6 +217,33 @@ export class BillingService {
   }
 
   /**
+   * Calcule un devis (Quote) : actes + modificateurs → lignes, totalAMO, totalAMC, total.
+   * modifiers (ex: NUIT) sont fusionnés avec acts pour le moteur.
+   */
+  calculateQuote(
+    acts: string[],
+    patientId?: string,
+    patientAge?: number,
+    ald?: boolean,
+    modifiers?: string[],
+  ): BillingQuote {
+    const effectiveActs = [...acts, ...(modifiers ?? [])];
+    const sim = this.simulate(effectiveActs, patientId, patientAge, ald);
+    const lines: QuoteLine[] = sim.breakdown.map((b) => ({
+      label: b.label,
+      price: b.amount,
+      type: b.ruleId ? ('MODIFIER' as const) : ('ACT' as const),
+    }));
+    return {
+      lines,
+      totalAMO: sim.amo,
+      totalAMC: sim.amc,
+      total: sim.total,
+      rulesApplied: sim.rulesApplied,
+    };
+  }
+
+  /**
    * Récupère les codes NGAP/CCAM des actes réalisés aujourd'hui pour un patient (graphe Procedure).
    * Utilisé par GET /billing/prediction/:patientId et par l'intelligence Scribe (suggestedBillingCodes).
    */
@@ -308,14 +351,19 @@ export class BillingService {
   }
 
   /**
-   * Persiste une facture à partir d'un résultat de simulation déjà calculé (montant validé = montant affiché).
-   * Utilisé par createAndValidateFromContext pour la validation en un clic.
+   * Persiste une facture (Snapshot immuable – Grand Livre).
+   * Les montants ne sont jamais recalculés à la lecture.
    */
   private async createInvoiceWithResult(
     patientId: string | null,
     acts: string[],
     result: SimulateBillingResult,
     status: 'DRAFT' | 'VALIDATED',
+    options?: {
+      performedAt?: Date;
+      contextSnapshot?: Record<string, unknown>;
+      consultationId?: string | null;
+    },
   ): Promise<{
     id: string;
     patientId: string | null;
@@ -337,6 +385,9 @@ export class BillingService {
       const exists = await this.prisma.patient.findUnique({ where: { id: patientId }, select: { id: true } });
       if (exists) prismaPatientId = patientId;
     }
+    const performedAt = options?.performedAt ?? new Date();
+    const contextSnapshot = options?.contextSnapshot ?? null;
+    const consultationId = options?.consultationId ?? null;
     const invoice = await this.prisma.invoice.create({
       data: {
         patientId: prismaPatientId,
@@ -345,6 +396,9 @@ export class BillingService {
         acts,
         status,
         rulesVersion,
+        performedAt,
+        contextSnapshot: contextSnapshot ? (contextSnapshot as object) : undefined,
+        consultationId: consultationId || undefined,
       },
     });
     return {
@@ -357,12 +411,20 @@ export class BillingService {
   }
 
   /**
-   * Valide la facture en un clic : prédiction actuelle (actes du jour + contexte) → facture persistée avec statut VALIDATED.
-   * Garantit que le montant enregistré = montant affiché à l'écran.
+   * Valide la facture : prédiction (actes du jour) OU actes explicites → facture persistée VALIDATED.
+   * Mode contexte : patientId seul → actes du jour (Procedure).
+   * Mode explicite : patientId + acts [+ modifiers] → validation directe depuis un Quote.
    */
   async createAndValidateFromContext(
     patientId: string,
-    overrides?: { age?: number; ald?: boolean },
+    overrides?: {
+      age?: number;
+      ald?: boolean;
+      acts?: string[];
+      modifiers?: string[];
+      performedAt?: string;
+      consultationId?: string;
+    },
   ): Promise<{
     id: string;
     patientId: string | null;
@@ -370,14 +432,36 @@ export class BillingService {
     status: string;
     createdAt: Date;
   }> {
-    const prediction = await this.predictFromContext(patientId, overrides);
+    let prediction: SimulateBillingResult;
+    let acts: string[];
+    let contextSnapshot: Record<string, unknown> | undefined;
+
+    if (overrides?.acts != null && overrides.acts.length > 0) {
+      const effectiveActs = [...overrides.acts, ...(overrides.modifiers ?? [])];
+      prediction = this.simulate(effectiveActs, patientId, overrides.age, overrides.ald);
+      acts = effectiveActs;
+      const patientCtx = this.patientContext.getEngineContext(patientId);
+      contextSnapshot = { age: patientCtx?.age ?? overrides.age, coverage: patientCtx?.coverage ?? (overrides.ald ? 1 : 0), modifiers: overrides.modifiers };
+    } else {
+      const pred = await this.predictFromContext(patientId, { age: overrides?.age, ald: overrides?.ald });
+      prediction = pred;
+      acts = pred.actsFromContext?.length ? pred.actsFromContext : ['C'];
+      const patientCtx = this.patientContext.getEngineContext(patientId);
+      contextSnapshot = { age: patientCtx?.age, coverage: patientCtx?.coverage };
+    }
+
     if (prediction.total <= 0 || (prediction.breakdown?.length ?? 0) === 0) {
       throw new BadRequestException(
         'Impossible de valider une simulation vide ou sans montant. Ajoutez au moins un acte.',
       );
     }
-    const acts = prediction.actsFromContext.length > 0 ? prediction.actsFromContext : ['C'];
-    return this.createInvoiceWithResult(patientId, acts, prediction, 'VALIDATED');
+
+    const performedAt = overrides?.performedAt ? new Date(overrides.performedAt) : undefined;
+    return this.createInvoiceWithResult(patientId, acts, prediction, 'VALIDATED', {
+      performedAt,
+      contextSnapshot,
+      consultationId: overrides?.consultationId,
+    });
   }
 
   /**

@@ -216,6 +216,7 @@ model Consultation {
 
   // Facturation (Module E+)
   billingEvents BillingEvent[]
+  invoices      Invoice[]
 
   @@index([patientId])
   @@index([status])
@@ -241,26 +242,34 @@ model BillingRules {
 }
 
 /// Facture – Cristallisation du calcul (Grand Livre).
-/// Jamais de Float pour l'argent : totalAmount en Decimal.
+/// Snapshot immuable : les montants ne sont JAMAIS recalculés à la lecture.
 model Invoice {
   id        String   @id @default(uuid())
   patientId String? // Optionnel pour démo / patients externes
   patient   Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
 
-  totalAmount    Decimal   @db.Decimal(10, 2) // Montant total (€)
-  breakdown      Json // Résultat exact du moteur : lignes + amo, amc, amount_patient
-  acts           String[] // Codes actes (ex: ["C"]) pour traçabilité
-  status         String    @default("DRAFT") // DRAFT | VALIDATED | TRANSMITTED | PAID | REJECTED
-  rulesVersion   String // ex: "NGAP_2024" – crucial pour l'audit
-  fseToken       String? // Lot FSE (Feuille de Soins Électronique) – généré à la télétransmission
-  fseGeneratedAt DateTime? // Traçabilité temporelle de la télétransmission
+  totalAmount  Decimal  @db.Decimal(10, 2) // Montant total (€)
+  breakdown    Json // Snapshot : lignes + amo, amc, amount_patient au moment de la validation
+  acts         String[] // Codes actes (ex: ["C", "NUIT"]) pour traçabilité
+  status       String   @default("DRAFT") // DRAFT | VALIDATED | TRANSMITTED | PAID | REJECTED
+  rulesVersion String // ex: "NGAP_2024" – crucial pour l'audit
+
+  performedAt     DateTime      @default(now()) // Date/heure de l'acte (peut différer de createdAt)
+  contextSnapshot Json? // Snapshot du contexte : { age, coverage, modifiers } au moment du calcul
+  consultationId  String? // Lien vers la consultation source (événement médical)
+  consultation    Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
+  fseToken       String? // Lot FSE – généré à la télétransmission
+  fseGeneratedAt DateTime? // Traçabilité de la télétransmission
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([patientId])
+  @@index([consultationId])
   @@index([status])
   @@index([createdAt])
+  @@index([performedAt])
   @@map("invoices")
 }
 

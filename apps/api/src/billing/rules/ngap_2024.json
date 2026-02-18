@@ -5,6 +5,8 @@
   {"id":"G_CS","type":"line","trigger":"GS","price":26.5,"part_secu":0.7,"conditions":[],"label":"Consultation GS"},
   {"id":"VISITE","type":"line","trigger":"V","price":33,"part_secu":0.7,"conditions":[],"label":"Visite (V)"},
   {"id":"VISITE_CS","type":"line","trigger":"VS","price":33,"part_secu":0.7,"conditions":[],"label":"Visite secteur 2 (VS)"},
+  {"id":"CONSULTATION_VIDEO","type":"line","trigger":"TCG","price":25,"part_secu":0.7,"conditions":[],"label":"Consultation vidéo (TCG)"},
+  {"id":"MAJORATION_NUIT","type":"line","trigger":"NUIT","price":35,"part_secu":0.7,"conditions":[],"label":"Majoration nuit","ruleId":"NUIT"},
   {"id":"ACTE_TECHNIQUE_K","type":"line","trigger":"K","price":1.92,"part_secu":0.7,"conditions":[],"label":"Acte technique (K)"},
   {"id":"MAJORATION_DIMANCHE","type":"line","trigger":"MD","price":19.06,"part_secu":0.7,"conditions":[],"label":"Majoration dimanche (MD)"},
   {"id":"ECG","type":"line","trigger":"ECG","price":14.26,"part_secu":0.7,"conditions":[],"label":"Electrocardiogramme (ECG)"},

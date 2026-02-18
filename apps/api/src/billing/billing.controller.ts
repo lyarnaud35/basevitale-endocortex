@@ -1,8 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { BillingService, SimulateBillingResult, type InvoiceAction } from './billing.service';
+import { BillingService, BillingQuote, SimulateBillingResult, type InvoiceAction } from './billing.service';
 import { PatientContextService } from './patient-context.service';
 import { SimulateBillingDto } from './dto/simulate-billing.dto';
+import { QuoteBillingDto } from './dto/quote-billing.dto';
 import { InvoiceStatusActionDto } from './dto/invoice-status.dto';
 import { ValidateBillingDto } from './dto/validate-billing.dto';
 import { Public } from '../common';
@@ -87,19 +88,42 @@ export class BillingController {
     return this.billingService.simulate(dto.acts, dto.patientId, dto.patientAge, dto.ald);
   }
 
+  @Post('quote')
+  @Public()
+  @ApiOperation({
+    summary: 'Devis (Réacteur Fiscal)',
+    description:
+      'Calcule le devis détaillé. patientId → âge auto (MEG si < 6 ans). modifiers (NUIT, MD) fusionnés avec acts.',
+  })
+  @ApiBody({ type: QuoteBillingDto })
+  @ApiResponse({ status: 200, description: 'Devis (lines, totalAMO, totalAMC, total)' })
+  quote(@Body() dto: QuoteBillingDto): BillingQuote {
+    return this.billingService.calculateQuote(
+      dto.acts,
+      dto.patientId,
+      undefined,
+      undefined,
+      dto.modifiers,
+    );
+  }
+
   @Post('validate')
   @Public()
   @ApiOperation({
-    summary: 'Valider la facture en un clic',
-    description: 'Prédiction actuelle (actes du jour + contexte) → facture persistée avec statut VALIDATED. Montant enregistré = montant affiché.',
+    summary: 'Valider la facture (Grand Livre)',
+    description:
+      'Mode contexte : patientId seul → actes du jour. Mode explicite : patientId + acts [+ modifiers] → validation directe depuis un Quote. Snapshot immuable.',
   })
   @ApiBody({ type: ValidateBillingDto })
   @ApiResponse({ status: 201, description: 'Facture validée (id, totalAmount, createdAt)' })
   async validateInvoice(@Body() dto: ValidateBillingDto) {
-    const overrides =
-      dto.age !== undefined || dto.ald === true
-        ? { age: dto.age, ald: dto.ald }
-        : undefined;
+    const overrides: Parameters<typeof this.billingService.createAndValidateFromContext>[1] = {};
+    if (dto.age !== undefined) overrides.age = dto.age;
+    if (dto.ald === true) overrides.ald = dto.ald;
+    if (dto.acts != null && dto.acts.length > 0) overrides.acts = dto.acts;
+    if (dto.modifiers != null && dto.modifiers.length > 0) overrides.modifiers = dto.modifiers;
+    if (dto.performedAt) overrides.performedAt = dto.performedAt;
+    if (dto.consultationId) overrides.consultationId = dto.consultationId;
     return this.billingService.createAndValidateFromContext(dto.patientId, overrides);
   }
 
